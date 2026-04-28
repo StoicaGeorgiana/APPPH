@@ -1,0 +1,13 @@
+{
+  "name": "GestiunePro v44 FINAL",
+  "short_name": "GestiunePro",
+  "description": "Gestiune magazin: coș, PLU, inventar, intrări, coduri casă.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "lang": "ro",
+  "icons": []
+}
