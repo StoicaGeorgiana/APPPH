@@ -480,3 +480,210 @@ th{
     padding:1mm 2mm!important;
   }
 }
+
+
+/* =========================
+   V46 - FIX TELEFON / CT58
+   ========================= */
+@media (max-width: 900px){
+  .labels-a4,
+  .screen-labels{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:12px!important;
+    width:100%!important;
+    padding:8px!important;
+  }
+  .price-label-24{
+    width:100%!important;
+    max-width:100%!important;
+    min-height:135px!important;
+    border-radius:16px!important;
+  }
+  .label-name{
+    font-size:15px!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    padding-right:42px!important;
+  }
+  .label-barcode{
+    max-width:92%!important;
+    height:38px!important;
+  }
+  .label-lei{font-size:46px!important}
+  .label-bani{font-size:23px!important}
+  .label-x{
+    width:38px!important;
+    height:38px!important;
+    font-size:24px!important;
+    line-height:1!important;
+    padding:0!important;
+  }
+}
+
+#camera-scan-overlay{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  background:rgba(0,0,0,.86);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+.camera-box{
+  width:100%;
+  max-width:430px;
+  background:#121a2d;
+  border:1px solid #2b3b5f;
+  border-radius:18px;
+  padding:16px;
+  text-align:center;
+  box-shadow:0 20px 80px rgba(0,0,0,.55);
+}
+#camera-reader{
+  width:100%;
+  background:#000;
+  border-radius:14px;
+  overflow:hidden;
+  margin:12px 0 14px;
+}
+#camera-reader video{
+  width:100%!important;
+  border-radius:14px;
+}
+
+/* =========================
+   V47 - ETICHETE SGR + DENUMIRE COMPLETĂ
+   ========================= */
+.label-name-full{
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:clip!important;
+  height:34px;
+  line-height:1.08;
+  padding:0 38px 0 8px!important;
+  word-break:normal;
+}
+.label-total-sgr{
+  text-align:left;
+  font-weight:900;
+  line-height:1.05;
+  color:#111;
+}
+.label-total-sgr small{
+  font-size:10px;
+  color:#444;
+}
+.label-bottom-sgr{
+  align-items:flex-end;
+}
+.label-bottom-sgr .label-sgr{
+  max-width:120px;
+  font-size:11px;
+  line-height:1.05;
+}
+.suggest{
+  max-height:70vh!important;
+  overflow:auto!important;
+}
+
+@media print{
+  .label-name-full{
+    font-size:8pt!important;
+    height:8mm!important;
+    white-space:normal!important;
+    padding:0!important;
+  }
+  .label-total-sgr small{font-size:6pt!important;}
+  .label-bottom-sgr .label-sgr{
+    font-size:6.5pt!important;
+    max-width:25mm!important;
+  }
+}
+
+
+/* v48 FIX etichete telefon / CT58 */
+@media (max-width: 900px) {
+  .labels-a4,
+  .screen-labels {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    width: 100% !important;
+    padding: 8px !important;
+  }
+
+  .price-label-24 {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 135px !important;
+    border-radius: 16px !important;
+  }
+
+  .label-name {
+    font-size: 15px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    padding-right: 42px !important;
+  }
+
+  .label-barcode {
+    max-width: 92% !important;
+    height: 38px !important;
+  }
+
+  .label-lei {
+    font-size: 46px !important;
+  }
+
+  .label-bani {
+    font-size: 23px !important;
+  }
+
+  .label-x {
+    width: 38px !important;
+    height: 38px !important;
+    font-size: 24px !important;
+    line-height: 1 !important;
+    padding: 0 !important;
+  }
+}
+
+/* v48 camera scanner */
+#camera-scan-overlay{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  background:rgba(0,0,0,.86);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+
+.camera-box{
+  width:100%;
+  max-width:420px;
+  background:#121a2d;
+  border:1px solid #2b3b5f;
+  border-radius:18px;
+  padding:16px;
+  text-align:center;
+  color:#eef2ff;
+}
+
+#camera-reader{
+  width:100%;
+  background:#000;
+  border-radius:14px;
+  overflow:hidden;
+  margin-bottom:14px;
+}
+
+.suggest{
+  max-height:70vh !important;
+  overflow:auto !important;
+}

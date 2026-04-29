@@ -23,6 +23,12 @@ let LABEL_LINES=[];
 let INV_LINES=[];
 let APP={produseCount:0,intrariCount:0,lastImport:null};
 
+// Cache rapid produse pentru telefon / CT58
+let PROD_CACHE = [];
+let PROD_BY_COD = new Map();
+let PROD_BY_PLU = new Map();
+let PROD_CACHE_READY = false;
+
 const $=id=>document.getElementById(id);
 const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const norm=s=>String(s??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
@@ -87,21 +93,79 @@ async function logout(){
 }
 window.logout=logout;
 
-window.addEventListener('load', async ()=>{
-  $('app').style.display='none';
 
-  try{
-    const {data}=await supabaseClient.auth.getSession();
 
-    if(data?.session){
-      $('login-screen').style.display='none';
-      $('app').style.display='block';
-      await init();
-    }
-  }catch(e){
-    console.warn('Nu pot verifica sesiunea Supabase:', e);
+/* =========================
+   SCANARE CU CAMERA TELEFON
+   ========================= */
+let cameraScanner = null;
+
+function openCameraScanner(inputId, afterScanFnName){
+  closeCameraScanner();
+
+  if(typeof Html5Qrcode === 'undefined'){
+    alert('Scannerul cu camera nu este încărcat. Verifică internetul și reîncarcă aplicația.');
+    return;
   }
-});
+
+  const overlay=document.createElement('div');
+  overlay.id='camera-scan-overlay';
+  overlay.innerHTML=`
+    <div class="camera-box">
+      <h2>Scanează codul de bare</h2>
+      <p class="muted">Ține codul de bare în zona camerei.</p>
+      <div id="camera-reader"></div>
+      <button class="red" onclick="closeCameraScanner()">Închide camera</button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  cameraScanner = new Html5Qrcode('camera-reader');
+
+  cameraScanner.start(
+    { facingMode: 'environment' },
+    { fps: 12, qrbox: { width: 280, height: 150 } },
+    async decodedText=>{
+      const input=$(inputId);
+      if(input){
+        input.value=String(decodedText||'').trim();
+        input.focus();
+      }
+
+      await closeCameraScanner();
+
+      if(afterScanFnName && typeof window[afterScanFnName] === 'function'){
+        try{
+          const result = window[afterScanFnName](inputId);
+          if(result && typeof result.then === 'function') await result;
+        }catch(e){
+          console.error('Eroare după scanare:', e);
+          alert('Codul a fost scanat, dar căutarea a dat eroare.');
+        }
+      }
+    },
+    ()=>{}
+  ).catch(err=>{
+    alert('Nu pot porni camera: ' + err);
+    closeCameraScanner();
+  });
+}
+
+async function closeCameraScanner(){
+  try{
+    if(cameraScanner){
+      await cameraScanner.stop();
+      await cameraScanner.clear();
+    }
+  }catch(e){}
+  cameraScanner=null;
+
+  const old=document.getElementById('camera-scan-overlay');
+  if(old) old.remove();
+}
+
+window.openCameraScanner=openCameraScanner;
+window.closeCameraScanner=closeCameraScanner;
 
 /* =========================
    ERORI / NOTIFICĂRI
@@ -260,6 +324,25 @@ async function loadCounts(){
   CART=await getAll('cart');
 }
 
+async function loadProductCache(){
+  try{
+    PROD_CACHE = await getAll('produse');
+    PROD_BY_COD = new Map();
+    PROD_BY_PLU = new Map();
+    PROD_CACHE.forEach(p=>{
+      const cod = cleanCode(p.cod_bare || '');
+      const plu = cleanCode(p.plu || '');
+      if(cod) PROD_BY_COD.set(cod, p);
+      if(plu) PROD_BY_PLU.set(plu, p);
+    });
+    PROD_CACHE_READY = true;
+    console.log('Cache produse încărcat:', PROD_CACHE.length);
+  }catch(e){
+    console.warn('Nu pot încărca cache produse:', e);
+    PROD_CACHE_READY = false;
+  }
+}
+
 async function saveCart(){
   await clearStore('cart');
   await putMany('cart',CART,500);
@@ -268,6 +351,7 @@ async function saveCart(){
 async function init(){
   await openDB();
   await loadCounts();
+  await loadProductCache();
   renderShell();
 }
 
@@ -539,6 +623,7 @@ async function importExcel(e){
   await setSetting('lastImport',new Date().toLocaleString('ro-RO'));
 
   await loadCounts();
+  await loadProductCache();
 
   $('import-status').innerHTML=`<div class="notice good">Import finalizat: ${produse.length} produse și ${intrari.length} intrări.</div>`;
   dashboard();
@@ -548,31 +633,49 @@ async function importExcel(e){
    PRODUSE / CĂUTARE
    ========================= */
 async function searchProducts(q){
-  q=String(q||'').trim();
-  if(!q) return [];
+  q = String(q || '').trim();
+  if (!q) return [];
 
-  const code=cleanCode(q);
-  let out=[];
+  if (!PROD_CACHE_READY) await loadProductCache();
 
-  if(code){
-    out=out.concat(await getByIndex('produse','cod_bare',code));
-    out=out.concat(await getByIndex('produse','plu',code));
+  const code = cleanCode(q);
+  const nq = norm(q);
+  const words = nq.split(/\s+/).filter(Boolean);
+
+  if (code) {
+    const exact = PROD_BY_COD.get(code) || PROD_BY_PLU.get(code);
+    if (exact) return [exact];
   }
 
-  const all=await getAll('produse');
-  const nq=norm(q);
-  const words=nq.split(/\s+/).filter(Boolean);
+  const starts = [];
+  const containsAll = [];
+  const containsAny = [];
 
-  out=out.concat(all.filter(p=>{
-    const den=norm(p.denumire||'');
-    const cod=String(p.cod_bare||'');
-    const plu=String(p.plu||'');
+  for (const p of PROD_CACHE) {
+    const den = norm(p.denumire || '');
+    const cod = String(p.cod_bare || '');
+    const plu = String(p.plu || '');
+    const hay = `${den} ${cod} ${plu}`;
 
-    return (code && (cod.includes(code)||plu.includes(code))) ||
-           (words.length && words.every(w=>den.includes(w)));
-  }));
+    if (code && (cod.includes(code) || plu.includes(code))) {
+      containsAll.push(p);
+      continue;
+    }
 
-  return uniqueProds(out).slice(0,50);
+    if (!words.length) continue;
+
+    const all = words.every(w => hay.includes(w));
+    const any = words.some(w => hay.includes(w));
+
+    if (all) {
+      if (words.some(w => den.startsWith(w))) starts.push(p);
+      else containsAll.push(p);
+    } else if (any) {
+      containsAny.push(p);
+    }
+  }
+
+  return uniqueProds([...starts, ...containsAll, ...containsAny]);
 }
 
 function uniqueProds(arr){
@@ -582,6 +685,17 @@ function uniqueProds(arr){
 }
 
 async function byCode(q){
+  q=String(q||'').trim();
+  if(!q) return null;
+
+  if(!PROD_CACHE_READY) await loadProductCache();
+
+  const code=cleanCode(q);
+  if(code){
+    const exact = PROD_BY_COD.get(code) || PROD_BY_PLU.get(code);
+    if(exact) return exact;
+  }
+
   const arr=await searchProducts(q);
   return arr[0]||null;
 }
@@ -597,22 +711,35 @@ async function getProdById(id){
 window.showSuggest=async function(id,pickFn){
   const q=$(id).value;
   const box=$(id+'-s');
+
+  if(!q || String(q).trim().length<2){
+    box.classList.add('hide');
+    box.innerHTML='';
+    return;
+  }
+
   const arr=await searchProducts(q);
 
   if(!arr.length){
     box.classList.add('hide');
+    box.innerHTML='';
     return;
   }
 
   box.classList.remove('hide');
 
-  box.innerHTML=arr.map(p=>`
+  const visible=arr.slice(0,80);
+  box.innerHTML=visible.map(p=>`
     <div onclick="${pickFn}('${esc(p.id)}')">
       <b>${esc(p.cod_bare||'')}</b>
       ${p.plu?`PLU ${esc(p.plu)}`:''}
       — ${esc(p.denumire)}
       <span style="float:right">${lei(p.pret)}</span>
-    </div>`).join('');
+    </div>`).join('') + (
+      arr.length>visible.length
+        ? `<div class="muted">Mai există ${arr.length-visible.length} rezultate. Scrie mai multe litere pentru filtrare.</div>`
+        : ''
+    );
 };
 
 function productSearchHtml(inputId,pickFn,placeholder='Cod bare / PLU / denumire'){
@@ -668,6 +795,7 @@ function cos(){
 
       <div class="row">
         <button onclick="addCartByInput('cart-q')">Adaugă după text</button>
+        <button class="secondary" onclick="openCameraScanner('cart-q','addCartByInput')">📷 Scanează</button>
         <input class="input" id="cart-plu" style="max-width:260px" placeholder="Introdu PLU manual" onkeydown="if(event.key==='Enter')addCartByInput('cart-plu')">
         <button onclick="addCartByInput('cart-plu')">Caută PLU</button>
         <button class="red" onclick="clearCart()">Golește coș</button>
@@ -885,6 +1013,7 @@ function verificare(){
 
       <div class="row">
         <button onclick="verifyInput('ver-q')">Verifică manual</button>
+        <button class="secondary" onclick="openCameraScanner('ver-q','verifyInput')">📷 Scanează</button>
         <button class="secondary" onclick="$('ver-result').innerHTML='';$('ver-q').value=''">Golește</button>
       </div>
     </div>
@@ -996,6 +1125,7 @@ function inventar(){
         ${productSearchHtml('inv-q','pickInv')}
         <div class="row">
           <button onclick="addInvByInput('inv-q')">Adaugă</button>
+          <button class="secondary" onclick="openCameraScanner('inv-q','addInvByInput')">📷 Scanează</button>
           <button class="secondary" onclick="exportInvExcel()">Export Excel</button>
           <button class="secondary" onclick="exportInvWord()">Export Word</button>
           <button class="red" onclick="clearInventarLinii()">Golește inventar</button>
@@ -1257,6 +1387,7 @@ async function intrari(){
 
       <div class="row">
         <input class="input" id="intrari-search" style="max-width:520px" placeholder="Cod bare / PLU / denumire / document / furnizor" onkeydown="if(event.key==='Enter')cautaIntrari()">
+        <button class="secondary" onclick="openCameraScanner('intrari-search','cautaIntrari')">📷 Scanează cu camera</button>
         <button onclick="cautaIntrari()">Caută în intrări</button>
         <button class="secondary" onclick="$('intrari-search').value='';renderIntrariView({q:'',zi:'',luna:'',an:''})">Golește</button>
       </div>
@@ -1270,6 +1401,7 @@ async function intrari(){
 async function cautaIntrari(){
   await renderIntrariView(getIntrariFilters());
 }
+window.cautaIntrari=cautaIntrari;
 
 async function exportIntrariCautare(){
   const rows=await searchIntrariRows(getIntrariFilters(),1000000);
@@ -1406,7 +1538,7 @@ function labelCardHtml(p,i){
 
   return `<div class="price-label-24">
     <button class="label-x no-print" onclick="LABEL_LINES.splice(${i},1);renderLabels()">×</button>
-    <div class="label-name">${esc(p.denumire||'')}</div>
+    <div class="label-name label-name-full">${esc(p.denumire||'')}</div>
     <div class="label-line"></div>
     <svg id="label-bc-${i}" class="label-barcode"></svg>
     <div class="label-price">
@@ -1414,11 +1546,24 @@ function labelCardHtml(p,i){
       <span class="label-bani">,${base.bani}</span>
       <span class="label-currency">LEI</span>
     </div>
-    <div class="label-bottom">
-      <span>BUC</span>
-      ${sgr?`<span class="label-sgr">+ SGR<br>${total}</span>`:'<span></span>'}
+    <div class="label-bottom label-bottom-sgr">
+      ${sgr?`<span class="label-total-sgr">${total}<br><small>cu SGR</small></span>`:'<span>BUC</span>'}
+      ${sgr?`<span class="label-sgr">+ 0.50 BANI SGR</span>`:'<span></span>'}
     </div>
   </div>`;
+}
+
+function labelExportSettings(){
+  const readNum=(id,def)=>{
+    const v=Number($(id)?.value);
+    return Number.isFinite(v)&&v>0?v:def;
+  };
+  return {
+    namePt:readNum('label-font-name',8.5),
+    pricePt:readNum('label-font-price',27),
+    barcodeMm:readNum('label-barcode-height',8),
+    rowMm:readNum('label-row-height',33)
+  };
 }
 
 function etichete(){
@@ -1435,8 +1580,18 @@ function etichete(){
 
       <div class="row">
         <button onclick="addLabelByInput('label-q')">Adaugă etichetă</button>
+        <button class="secondary" onclick="openCameraScanner('label-q','addLabelByInput')">📷 Scanează</button>
         <label class="row">Copii/etichetă:
           <input class="input" id="label-copies" type="number" min="1" step="1" value="1" style="max-width:90px">
+        </label>
+        <label class="row">Text denumire:
+          <input class="input" id="label-font-name" type="number" min="6" max="14" step="0.5" value="8.5" style="max-width:90px"> pt
+        </label>
+        <label class="row">Preț:
+          <input class="input" id="label-font-price" type="number" min="18" max="40" step="1" value="27" style="max-width:90px"> pt
+        </label>
+        <label class="row">Cod bare:
+          <input class="input" id="label-barcode-height" type="number" min="5" max="14" step="1" value="8" style="max-width:90px"> mm
         </label>
         <button class="secondary" onclick="printLabels()">Tipărește 24/pagină</button>
         <button class="green" onclick="exportLabelsWord()">Export Word editabil</button>
@@ -1486,10 +1641,220 @@ function exportLabelsExcel(){
   })),'Etichete');
 }
 
+function makeBarcodeDataUrl(value){
+  value=String(value||'').trim();
+  if(!value) return '';
+  try{
+    const canvas=document.createElement('canvas');
+    JsBarcode(canvas,value,{format:'CODE128',displayValue:true,height:34,width:1.25,fontSize:10,margin:0});
+    return canvas.toDataURL('image/png');
+  }catch(e){
+    return '';
+  }
+}
+
 function exportLabelsWord(){
-  downloadWord('etichete_pret_editabile.doc','Etichete preț',LABEL_LINES.map(p=>`
-    <div>${esc(p.denumire)} - ${lei(labelBasePrice(p))}${hasSGR(p)?' + SGR '+lei(labelTotalPrice(p)):''}</div>
-  `).join(''));
+  const source=LABEL_LINES||[];
+  if(!source.length){
+    alert('Nu ai etichete de exportat.');
+    return;
+  }
+
+  const cfg=labelExportSettings ? labelExportSettings() : {namePt:8.5, pricePt:24, barcodeMm:8, rowMm:33};
+
+  const items=[];
+  source.forEach(p=>{
+    const copies=Math.max(1,Math.round(parseCant(p.cantitate||1)));
+    for(let i=0;i<copies;i++) items.push(p);
+  });
+
+  while(items.length%24!==0) items.push(null);
+
+  const pages=[];
+  for(let pageStart=0; pageStart<items.length; pageStart+=24){
+    const pageItems=items.slice(pageStart,pageStart+24);
+    const rows=[];
+
+    for(let r=0;r<8;r++){
+      const cells=[];
+      for(let c=0;c<3;c++){
+        const p=pageItems[r*3+c];
+
+        if(!p){
+          cells.push('<td class="label-cell empty"></td>');
+          continue;
+        }
+
+        const base=leiParts(labelBasePrice(p));
+        const total=lei(labelTotalPrice(p));
+        const sgr=hasSGR(p);
+        const code=String(p.cod_bare||p.plu||'');
+        const img=makeBarcodeDataUrl(code);
+
+        cells.push(`
+          <td class="label-cell">
+            <div class="label-inner">
+              <div class="w-label-name">${esc(p.denumire||'')}</div>
+              <div class="w-line"></div>
+              <div class="barcode-zone">
+                ${img?`<img class="w-barcode" src="${img}">`:`<div class="w-code">${esc(code)}</div>`}
+              </div>
+              <div class="w-price">
+                <span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span>
+              </div>
+              <div class="w-bottom">
+                <div class="w-total">${sgr?`cu SGR<br><b>${total}</b>`:'BUC'}</div>
+                <div class="w-sgr">${sgr?'+ 0.50 BANI SGR':''}</div>
+              </div>
+            </div>
+          </td>`);
+      }
+      rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+
+    pages.push(`<table class="labels-page">${rows.join('')}</table>`);
+  }
+
+  const html=`<!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      @page{size:A4 portrait;margin:8mm;}
+      body{
+        font-family:Arial,Helvetica,sans-serif;
+        margin:0;
+        padding:0;
+        color:#111;
+        background:white;
+      }
+
+      table.labels-page{
+        width:189mm;
+        height:264mm;
+        border-collapse:collapse;
+        table-layout:fixed;
+        margin:0 auto;
+        page-break-after:always;
+      }
+
+      table.labels-page:last-child{page-break-after:auto;}
+
+      tr{height:33mm;}
+
+      td.label-cell{
+        width:63mm;
+        height:33mm;
+        border:1px solid #999;
+        padding:1.2mm;
+        box-sizing:border-box;
+        vertical-align:middle;
+        text-align:center;
+        overflow:hidden;
+      }
+
+      td.empty{border:1px solid transparent;}
+
+      .label-inner{
+        position:relative;
+        width:100%;
+        height:30.5mm;
+        box-sizing:border-box;
+        overflow:hidden;
+      }
+
+      .w-label-name{
+        font-size:${cfg.namePt || 8.5}pt;
+        font-weight:700;
+        line-height:1.05;
+        min-height:7.2mm;
+        max-height:10.2mm;
+        overflow:hidden;
+        text-align:center;
+        word-break:normal;
+        white-space:normal;
+        mso-line-height-rule:exactly;
+      }
+
+      .w-line{
+        border-top:1px solid #333;
+        margin:.6mm 3mm .5mm;
+      }
+
+      .barcode-zone{
+        height:${cfg.barcodeMm || 8}mm;
+        display:block;
+        text-align:center;
+        overflow:hidden;
+      }
+
+      .w-barcode{
+        display:block;
+        margin:0 auto;
+        height:${cfg.barcodeMm || 8}mm;
+        max-width:52mm;
+      }
+
+      .w-code{
+        font-size:7pt;
+        height:${cfg.barcodeMm || 8}mm;
+        line-height:${cfg.barcodeMm || 8}mm;
+      }
+
+      .w-price{
+        font-weight:900;
+        line-height:.82;
+        margin-top:.5mm;
+        white-space:nowrap;
+        text-align:center;
+      }
+
+      .w-lei{font-size:${cfg.pricePt || 24}pt;}
+      .w-bani{font-size:${Math.max(12,Math.round((cfg.pricePt || 24)*0.52))}pt;vertical-align:top;}
+      .w-currency{font-size:${Math.max(8,Math.round((cfg.pricePt || 24)*0.33))}pt;font-weight:800;}
+
+      .w-bottom{
+        position:absolute;
+        left:1.6mm;
+        right:1.6mm;
+        bottom:0;
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-end;
+        font-weight:800;
+        font-size:7.2pt;
+        line-height:1.05;
+      }
+
+      .w-total{
+        text-align:left;
+        min-width:20mm;
+      }
+
+      .w-total b{
+        font-size:8pt;
+      }
+
+      .w-sgr{
+        background:#f7941d;
+        color:white;
+        border-radius:3mm;
+        padding:1mm 1.8mm;
+        max-width:27mm;
+        text-align:center;
+        line-height:1.05;
+        font-size:7.2pt;
+      }
+    </style>
+  </head>
+  <body>${pages.join('')}</body>
+  </html>`;
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\ufeff',html],{type:'application/msword'}));
+  a.download='etichete_pret_editabile_24_pe_pagina_v48.doc';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* =========================
