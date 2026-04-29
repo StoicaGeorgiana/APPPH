@@ -1,63 +1,334 @@
-
 :root{
-  --bg:#0b1020;--card:#121a2d;--card2:#17223a;--line:#2b3b5f;--text:#eef2ff;
-  --muted:#94a3b8;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--orange:#f59e0b;
+  --bg:#0b1020;
+  --card:#121a2d;
+  --card2:#17223a;
+  --line:#2b3b5f;
+  --text:#eef2ff;
+  --muted:#94a3b8;
+  --blue:#2563eb;
+  --green:#16a34a;
+  --red:#dc2626;
+  --orange:#f59e0b;
 }
+
 *{box-sizing:border-box}
-body{margin:0;background:radial-gradient(circle at top,#17223a,#0b1020);color:var(--text);font-family:Arial,Helvetica,sans-serif}
+
+html,body{
+  margin:0;
+  min-height:100%;
+  background:radial-gradient(circle at top,#17223a,#0b1020);
+  color:var(--text);
+  font-family:Arial,Helvetica,sans-serif;
+}
+
 button,input,select{font:inherit}
-button{border:0;border-radius:12px;padding:11px 15px;background:var(--blue);color:white;font-weight:800;cursor:pointer}
+
+button{
+  border:0;
+  border-radius:12px;
+  padding:11px 15px;
+  background:var(--blue);
+  color:white;
+  font-weight:800;
+  cursor:pointer;
+}
+
 button.secondary{background:var(--card2);border:1px solid var(--line)}
 button.green{background:var(--green)}
 button.red{background:var(--red)}
 button.orange{background:var(--orange);color:#111}
 button:disabled{opacity:.5;cursor:not-allowed}
-.wrap{display:flex;min-height:100vh}
-.side{width:250px;background:rgba(18,26,45,.98);border-right:1px solid var(--line);padding:18px;position:sticky;top:0;height:100vh;overflow:auto}
-.brand{font-size:24px;font-weight:900;margin-bottom:18px}.brand span{color:#38bdf8}
-.userbox{color:var(--muted);font-size:13px;margin:10px 0 16px}
-.pill{display:inline-block;background:#0b3b1b;color:#86efac;border:1px solid #16a34a;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:800}
-.nav button{display:block;width:100%;text-align:left;margin:6px 0;background:transparent;border:1px solid transparent}
-.nav button:hover,.nav button.active{background:var(--card2);border-color:var(--line)}
-.main{flex:1;padding:22px;overflow:auto}
-h1{margin:0 0 16px;font-size:28px}.muted{color:var(--muted);font-size:13px}
-.card{background:rgba(18,26,45,.94);border:1px solid var(--line);border-radius:18px;padding:17px;margin-bottom:15px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.stat{font-size:34px;font-weight:900}.input{width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:#0c1426;color:var(--text);margin:6px 0 10px}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:middle}th{color:#38bdf8;font-size:12px;text-transform:uppercase}
-.tbl-wrap{overflow:auto;max-width:100%}
-.qty{display:flex;gap:8px;align-items:center;justify-content:center}
-.qty button{min-width:52px;min-height:52px;font-size:24px;padding:4px;border-radius:14px}
-.qty input{width:120px!important;text-align:center;font-size:22px!important;font-weight:900}
-.suggest{position:absolute;background:#0c1426;border:1px solid var(--line);border-radius:12px;z-index:99;width:100%;max-height:300px;overflow:auto}
-.suggest div{padding:10px;border-bottom:1px solid #1f2a44;cursor:pointer}.suggest div:hover{background:#17223a}
+
+/* LOGIN */
+.login-screen{
+  width:100%;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:18px;
+  background:radial-gradient(circle at top,#17223a,#0b1020);
+}
+
+.login-card{
+  width:100%;
+  max-width:430px;
+  background:rgba(18,26,45,.96);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:30px;
+  text-align:center;
+  box-shadow:0 20px 70px rgba(0,0,0,.38);
+}
+
+.login-card h1{
+  margin:0 0 8px;
+  font-size:30px;
+  font-weight:900;
+}
+
+.login-card h1 span{color:#38bdf8}
+
+.login-card h2{
+  margin:0 0 22px;
+  font-size:24px;
+}
+
+.login-card input{
+  width:100%;
+  padding:14px;
+  margin:8px 0;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:#0c1426;
+  color:white;
+  outline:none;
+}
+
+.login-card input:focus{border-color:#38bdf8}
+
+.login-card button{
+  width:100%;
+  margin-top:12px;
+  padding:14px;
+  font-size:17px;
+}
+
+.login-error{
+  min-height:22px;
+  color:#fecaca;
+  font-size:14px;
+  margin:14px 0 0;
+}
+
+/* APP */
+.wrap{
+  display:flex;
+  width:100%;
+  min-height:100vh;
+}
+
+.side{
+  width:260px;
+  min-width:260px;
+  flex-shrink:0;
+  background:rgba(18,26,45,.98);
+  border-right:1px solid var(--line);
+  padding:18px;
+  position:sticky;
+  top:0;
+  height:100vh;
+  overflow:auto;
+}
+
+.brand{
+  font-size:24px;
+  font-weight:900;
+  margin-bottom:18px;
+}
+
+.brand span{color:#38bdf8}
+
+.userbox{
+  color:var(--muted);
+  font-size:13px;
+  margin:10px 0 16px;
+}
+
+.pill{
+  display:inline-block;
+  background:#0b3b1b;
+  color:#86efac;
+  border:1px solid #16a34a;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+}
+
+.nav button{
+  display:block;
+  width:100%;
+  text-align:left;
+  margin:6px 0;
+  background:transparent;
+  border:1px solid transparent;
+}
+
+.nav button:hover,.nav button.active{
+  background:var(--card2);
+  border-color:var(--line);
+}
+
+.main{
+  flex:1;
+  width:calc(100vw - 260px);
+  max-width:none;
+  padding:22px;
+  overflow:auto;
+}
+
+h1{margin:0 0 16px;font-size:28px}
+
+.muted{color:var(--muted);font-size:13px}
+
+.card{
+  background:rgba(18,26,45,.94);
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:17px;
+  margin-bottom:15px;
+  box-shadow:0 20px 60px rgba(0,0,0,.22);
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:14px;
+}
+
+.grid2{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:14px;
+}
+
+.stat{font-size:34px;font-weight:900}
+
+.input{
+  width:100%;
+  padding:13px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#0c1426;
+  color:var(--text);
+  margin:6px 0 10px;
+}
+
+.row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+th,td{
+  border-bottom:1px solid var(--line);
+  padding:10px;
+  text-align:left;
+  vertical-align:middle;
+}
+
+th{
+  color:#38bdf8;
+  font-size:12px;
+  text-transform:uppercase;
+}
+
+.tbl-wrap{
+  overflow:auto;
+  max-width:100%;
+}
+
+.qty{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  justify-content:center;
+}
+
+.qty button{
+  min-width:52px;
+  min-height:52px;
+  font-size:24px;
+  padding:4px;
+  border-radius:14px;
+}
+
+.qty input{
+  width:120px!important;
+  text-align:center;
+  font-size:22px!important;
+  font-weight:900;
+}
+
+.suggest{
+  position:absolute;
+  background:#0c1426;
+  border:1px solid var(--line);
+  border-radius:12px;
+  z-index:99;
+  width:100%;
+  max-height:300px;
+  overflow:auto;
+}
+
+.suggest div{
+  padding:10px;
+  border-bottom:1px solid #1f2a44;
+  cursor:pointer;
+}
+
+.suggest div:hover{background:#17223a}
+
 .hide{display:none}
-.notice{padding:12px 14px;border-radius:14px;background:#0c1426;border:1px solid var(--line);margin-bottom:12px}
-.good{border-color:#16a34a}.warn{border-color:#f59e0b}.bad{border-color:#dc2626;color:#fecaca}
-.label-card{background:white;color:#111;text-align:center;border-radius:14px;padding:18px;margin:10px;break-inside:avoid}
-.barcode-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.progress{height:12px;border-radius:999px;background:#0c1426;border:1px solid var(--line);overflow:hidden}.progress b{display:block;height:100%;background:#2563eb;width:0%}
-@media(max-width:900px){
-  .wrap{display:block}.side{position:relative;width:100%;height:auto}.main{padding:12px}
-  .grid,.grid2{display:block}.card{padding:14px;margin-bottom:12px}
-  button,input,select{font-size:17px}.nav{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nav button{margin:0}
-  table{display:block;overflow-x:auto;white-space:nowrap}.barcode-grid{grid-template-columns:1fr}
-}
-@media print{
-  body{background:white;color:#111}.side,.no-print,button{display:none!important}.main{padding:0}.card{box-shadow:none;border:0;background:white}
-  .barcode-grid{display:block}.label-card{border:1px solid #ddd;margin:8px}
+
+.notice{
+  padding:12px 14px;
+  border-radius:14px;
+  background:#0c1426;
+  border:1px solid var(--line);
+  margin-bottom:12px;
 }
 
+.good{border-color:#16a34a}
+.warn{border-color:#f59e0b}
+.bad{border-color:#dc2626;color:#fecaca}
 
-/* v43 - etichete pret 24/pagina */
+.label-card{
+  background:white;
+  color:#111;
+  text-align:center;
+  border-radius:14px;
+  padding:18px;
+  margin:10px;
+  break-inside:avoid;
+}
+
+.barcode-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:12px;
+}
+
+.progress{
+  height:12px;
+  border-radius:999px;
+  background:#0c1426;
+  border:1px solid var(--line);
+  overflow:hidden;
+}
+
+.progress b{
+  display:block;
+  height:100%;
+  background:#2563eb;
+  width:0%;
+}
+
+/* Etichete preț */
 .labels-a4{
   display:grid;
-  grid-template-columns:repeat(3, minmax(210px, 1fr));
+  grid-template-columns:repeat(3,minmax(210px,1fr));
   gap:10px;
   align-items:stretch;
 }
+
 .price-label-24{
   position:relative;
   box-sizing:border-box;
@@ -69,6 +340,7 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   color:#333;
   overflow:hidden;
 }
+
 .label-x{
   position:absolute;
   top:5px;
@@ -79,6 +351,7 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   background:#e5484d;
   color:#fff;
 }
+
 .label-name{
   text-align:center;
   font-size:15px;
@@ -89,25 +362,30 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   text-overflow:ellipsis;
   padding:0 18px;
 }
+
 .label-line{
   border-top:1px solid #333;
   margin:4px 10px 2px;
 }
+
 .label-barcode{
   display:block;
   margin:0 auto;
   height:34px;
   max-width:180px;
 }
+
 .label-price{
   text-align:center;
   font-weight:900;
   line-height:.9;
   margin-top:2px;
 }
-.label-lei{font-size:44px;}
-.label-bani{font-size:22px;vertical-align:top;}
-.label-currency{font-size:13px;margin-left:4px;}
+
+.label-lei{font-size:44px}
+.label-bani{font-size:22px;vertical-align:top}
+.label-currency{font-size:13px;margin-left:4px}
+
 .label-bottom{
   position:absolute;
   left:12px;
@@ -119,6 +397,7 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   font-weight:800;
   font-size:12px;
 }
+
 .label-sgr{
   background:#f7941d;
   color:white;
@@ -128,14 +407,51 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   font-size:12px;
   line-height:1.1;
 }
+
+@media(max-width:900px){
+  .wrap{display:block}
+  .side{
+    position:relative;
+    width:100%;
+    min-width:0;
+    height:auto;
+  }
+  .main{
+    width:100%;
+    padding:12px;
+  }
+  .grid,.grid2{display:block}
+  .card{
+    padding:14px;
+    margin-bottom:12px;
+  }
+  button,input,select{font-size:17px}
+  .nav{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+  }
+  .nav button{margin:0}
+  table{
+    display:block;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .barcode-grid{grid-template-columns:1fr}
+  .login-card{margin:12vh 14px}
+}
+
 @media print{
-  body{background:#fff!important}
-  .side,.no-print,.card:not(.price-label-24),h1{display:none!important}
-  .main{padding:0!important;margin:0!important}
+  body{background:white!important;color:#111}
+  .side,.no-print,button{display:none!important}
+  .main{padding:0!important;width:100%!important}
+  .card{box-shadow:none;border:0;background:white}
+  .barcode-grid{display:block}
+  .label-card{border:1px solid #ddd;margin:8px}
   .wrap{display:block!important}
   .labels-a4{
     display:grid!important;
-    grid-template-columns:repeat(3, 63mm)!important;
+    grid-template-columns:repeat(3,63mm)!important;
     grid-auto-rows:33mm!important;
     gap:0!important;
   }
@@ -153,6 +469,14 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--li
   .label-lei{font-size:29pt!important}
   .label-bani{font-size:15pt!important}
   .label-currency{font-size:9pt!important}
-  .label-bottom{font-size:8pt!important;left:3mm!important;right:3mm!important;bottom:2mm!important}
-  .label-sgr{font-size:8pt!important;padding:1mm 2mm!important}
+  .label-bottom{
+    font-size:8pt!important;
+    left:3mm!important;
+    right:3mm!important;
+    bottom:2mm!important;
+  }
+  .label-sgr{
+    font-size:8pt!important;
+    padding:1mm 2mm!important;
+  }
 }

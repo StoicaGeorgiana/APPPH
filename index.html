@@ -6,12 +6,30 @@
   <meta name="theme-color" content="#0f172a">
   <link rel="manifest" href="manifest.json">
   <title>GestiunePro v44 FINAL</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div id="app"></div>
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <h1>Gestiune<span>Pro</span></h1>
+      <h2>Autentificare</h2>
+
+      <input type="email" id="email" placeholder="Email" autocomplete="username">
+      <input type="password" id="password" placeholder="Parolă" autocomplete="current-password">
+
+      <button type="button" onclick="login()">Login</button>
+      <p id="login-error" class="login-error"></p>
+    </div>
+  </div>
+
+  <div id="app" style="display:none"></div>
+
   <script src="app.js"></script>
 </body>
 </html>
