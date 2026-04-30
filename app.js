@@ -21,6 +21,8 @@ let CART=[];
 let PRICE_CHANGES=[];
 let LABEL_LINES=[];
 let INV_LINES=[];
+let REC_LINES=[];
+let TRANS_LINES=[];
 let APP={produseCount:0,intrariCount:0,lastImport:null};
 
 // Cache rapid produse pentru telefon / CT58
@@ -122,9 +124,25 @@ function openCameraScanner(inputId, afterScanFnName){
 
   cameraScanner = new Html5Qrcode('camera-reader');
 
+  const scanConfig={
+    fps: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 8 : 12,
+    qrbox: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? { width: 220, height: 100 } : { width: 260, height: 130 },
+    aspectRatio: 1.777,
+    disableFlip: true
+  };
+  if(window.Html5QrcodeSupportedFormats){
+    scanConfig.formatsToSupport=[
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E
+    ];
+  }
+
   cameraScanner.start(
     { facingMode: 'environment' },
-    { fps: 12, qrbox: { width: 280, height: 150 } },
+    scanConfig,
     async decodedText=>{
       const input=$(inputId);
       if(input){
@@ -371,6 +389,8 @@ function renderShell(){
         ${nav('preturi','🏷 Prețuri schimbate')}
         ${nav('inventar','📦 Inventar')}
         ${nav('intrari','📥 Intrări')}
+        ${nav('receptie','📥 Recepție marfă')}
+        ${nav('transport','🚚 Fișă transport')}
         ${nav('iesiri','📤 Ieșiri')}
         ${nav('etichete','🏷 Etichete preț')}
         ${nav('backup','💾 Backup / reset')}
@@ -396,6 +416,8 @@ function getPageFunction(p){
     preturi,
     inventar,
     intrari,
+    receptie,
+    transport,
     iesiri,
     etichete,
     backup
@@ -537,7 +559,7 @@ function excelDate(v){
   return '';
 }
 
-function normIntr(row,i){
+function normIntr(row,i,prodLookup=null){
   const cod=cleanCode(getAny(row,['cod_bare','cod bare','codbar','ean','cod produs','cod']));
   const plu=cleanCode(getAny(row,['plu','PLU']));
   const den=String(getAny(row,['denumire','produs','nume produs','nume'])||'').trim();
@@ -547,6 +569,8 @@ function normIntr(row,i){
   const data=excelDate(getAny(row,['data','date']));
   const cant=money(getAny(row,['cantitate','cant','qty','total cantitate']));
   const pret=money(getAny(row,['pret','preț','pret fara tva','pret achizitie','pret_v_tva','pret cu tva']));
+  const prodMatch = prodLookup ? (prodLookup.get(cod) || prodLookup.get(plu) || null) : null;
+  const pretCuTvaMama = prodMatch ? money(prodMatch.pret) : money(getAny(row,['pret cu tva','pret_cu_tva','pret_v_tva','preț cu tva']));
   const nr=String(getAny(row,['nr','numar','număr','document','nr document','numar document'])||'').trim();
 
   return {
@@ -560,6 +584,7 @@ function normIntr(row,i){
     pret,
     valoare: money(getAny(row,['valoare','valoare fara tva','total valoare'])) || cant*pret,
     tva: money(getAny(row,['tva','valoare tva','tva valoare'])),
+    pret_cu_tva_mama: pretCuTvaMama,
     furnizor: String(getAny(row,['furnizor','cod fiscal','cui','cod_fiscal'])||'').trim()
   };
 }
@@ -610,7 +635,12 @@ async function importExcel(e){
   const rowsI=tvaName?XLSX.utils.sheet_to_json(wb.Sheets[tvaName],{defval:''}):[];
 
   const produse=rowsT.map(normProd).filter(Boolean);
-  const intrari=rowsI.map(normIntr).filter(Boolean);
+  const prodLookup=new Map();
+  produse.forEach(p=>{
+    if(p.cod_bare) prodLookup.set(String(p.cod_bare),p);
+    if(p.plu) prodLookup.set(String(p.plu),p);
+  });
+  const intrari=rowsI.map((r,i)=>normIntr(r,i,prodLookup)).filter(Boolean);
 
   await detectPriceChangesBeforeImport(produse);
 
@@ -1224,7 +1254,7 @@ function renderInvLines(){
       <td>${lei(cant*pret)}</td>
       <td><button class="red" onclick="INV_LINES.splice(${i},1);renderInvLines()">×</button></td>
     </tr>`;
-  }).join(''):'<tr><td colspan="9" class="muted">Nu ai linii inventar.</td></tr>';
+  }).join(''):'<tr><td colspan="10" class="muted">Nu ai linii inventar.</td></tr>';
 }
 
 function setInvQty(i,v){
@@ -1348,6 +1378,7 @@ async function renderIntrariView(filters=null){
             <th>Produs</th>
             <th>Cant.</th>
             <th>Preț</th>
+            <th>Preț cu TVA MAMA</th>
             <th>Valoare</th>
             <th>Furnizor</th>
           </tr>
@@ -1362,9 +1393,10 @@ async function renderIntrariView(filters=null){
               <td>${esc(x.denumire)}</td>
               <td>${fmtCant(x.cantitate)}</td>
               <td>${lei(x.pret)}</td>
+              <td>${x.pret_cu_tva_mama?lei(x.pret_cu_tva_mama):''}</td>
               <td>${lei(x.valoare)}</td>
               <td>${esc(x.furnizor||'')}</td>
-            </tr>`).join('') || '<tr><td colspan="9" class="muted">Nu există rezultate.</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="10" class="muted">Nu există rezultate.</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -1411,6 +1443,144 @@ async function exportIntrariCautare(){
 async function exportIntrariExcel(){
   const rows=sortIntrariNewestFirst(await getAll('intrari'));
   downloadExcel('intrari.xlsx',rows,'Intrari');
+}
+
+
+/* =========================
+   RECEPȚIE MARFĂ / FIȘĂ TRANSPORT - v49
+   ========================= */
+async function addRecByInput(inputId='rec-q'){
+  const q=$(inputId)?.value||'';
+  const p=await byCode(q);
+  if(!p) return toast('Produs inexistent');
+  REC_LINES.push({
+    id:p.id,cod_bare:p.cod_bare,plu:p.plu,denumire:p.denumire,pret:money(p.pret),pret_cu_tva_mama:money(p.pret),cantitate:1
+  });
+  if($(inputId)) $(inputId).value='';
+  renderReceptieLines();
+}
+window.addRecByInput=addRecByInput;
+
+function renderReceptieLines(){
+  const body=$('rec-body'); if(!body) return;
+  let total=0;
+  body.innerHTML=(REC_LINES||[]).map((x,i)=>{
+    const cant=parseCant(x.cantitate||1);
+    const pret=money(x.pret);
+    const val=cant*pret;
+    total+=val;
+    return `<tr>
+      <td>${esc(x.cod_bare)}</td>
+      <td>${esc(x.plu||'')}</td>
+      <td><input class="input" value="${esc(x.denumire)}" onchange="REC_LINES[${i}].denumire=this.value"></td>
+      <td><input class="input" type="number" step="0.001" value="${cant}" onchange="REC_LINES[${i}].cantitate=this.value;renderReceptieLines()"></td>
+      <td><input class="input" type="number" step="0.01" value="${pret}" onchange="REC_LINES[${i}].pret=this.value;renderReceptieLines()"></td>
+      <td>${lei(x.pret_cu_tva_mama)}</td>
+      <td><b>${lei(val)}</b></td>
+      <td><button class="red" onclick="REC_LINES.splice(${i},1);renderReceptieLines()">×</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">Nu ai produse în recepție.</td></tr>';
+  const t=$('rec-total'); if(t) t.textContent='Total recepție: '+lei(total);
+}
+
+async function saveReceptieLocal(){
+  if(!REC_LINES.length) return toast('Nu ai produse în recepție.');
+  const data=new Date().toISOString().slice(0,10);
+  const nr=$('rec-doc')?.value||('REC-'+new Date().toLocaleString('ro-RO'));
+  const furnizor=$('rec-furnizor')?.value||'';
+  const rows=REC_LINES.map((x,i)=>({
+    id:['REC',Date.now(),i,x.cod_bare,x.plu].join('|'),
+    data,nr,cod_bare:x.cod_bare,plu:x.plu,denumire:x.denumire,
+    cantitate:parseCant(x.cantitate),pret:money(x.pret),
+    pret_cu_tva_mama:money(x.pret_cu_tva_mama),
+    valoare:parseCant(x.cantitate)*money(x.pret),tva:0,furnizor
+  }));
+  await putMany('intrari',rows);
+  await loadCounts();
+  toast('Recepție salvată în intrări.');
+}
+window.saveReceptieLocal=saveReceptieLocal;
+
+function exportReceptieExcel(){
+  downloadExcel('receptie_marfa.xlsx',REC_LINES.map(x=>({
+    furnizor:$('rec-furnizor')?.value||'',document:$('rec-doc')?.value||'',
+    cod_bare:x.cod_bare,plu:x.plu,denumire:x.denumire,cantitate:parseCant(x.cantitate),pret:money(x.pret),pret_cu_tva_mama:money(x.pret_cu_tva_mama),valoare:parseCant(x.cantitate)*money(x.pret)
+  })),'Receptie');
+}
+window.exportReceptieExcel=exportReceptieExcel;
+
+function receptie(){
+  $('main').innerHTML=`
+    <h1>Recepție marfă</h1>
+    <div class="card">
+      <div class="grid2">
+        <input class="input" id="rec-furnizor" placeholder="Furnizor">
+        <input class="input" id="rec-doc" placeholder="Nr. document / factură">
+      </div>
+      <div class="row">
+        <input class="input" id="rec-q" style="max-width:520px" placeholder="Cod bare / PLU / denumire" onkeydown="if(event.key==='Enter')addRecByInput('rec-q')">
+        <button class="secondary" onclick="openCameraScanner('rec-q','addRecByInput')">📷 Scanează cu camera</button>
+        <button onclick="addRecByInput('rec-q')">Adaugă produs</button>
+        <button class="green" onclick="saveReceptieLocal()">Salvează în intrări</button>
+        <button class="secondary" onclick="exportReceptieExcel()">Export Excel</button>
+      </div>
+      <p id="rec-total" class="pill">Total recepție: 0,00 lei</p>
+    </div>
+    <div class="card tbl-wrap">
+      <table><thead><tr><th>Cod</th><th>PLU</th><th>Produs</th><th>Cant.</th><th>Preț</th><th>Preț TVA MAMA</th><th>Valoare</th><th></th></tr></thead><tbody id="rec-body"></tbody></table>
+    </div>`;
+  renderReceptieLines();
+}
+
+async function addTransportByInput(inputId='trans-q'){
+  const q=$(inputId)?.value||'';
+  const p=await byCode(q);
+  if(!p) return toast('Produs inexistent');
+  TRANS_LINES.push({id:p.id,cod_bare:p.cod_bare,plu:p.plu,denumire:p.denumire,pret:money(p.pret),cantitate:1});
+  if($(inputId)) $(inputId).value='';
+  renderTransportLines();
+}
+window.addTransportByInput=addTransportByInput;
+
+function renderTransportLines(){
+  const body=$('trans-body'); if(!body) return;
+  let total=0;
+  body.innerHTML=(TRANS_LINES||[]).map((x,i)=>{
+    const cant=parseCant(x.cantitate||1); const val=cant*money(x.pret); total+=val;
+    return `<tr><td>${esc(x.cod_bare)}</td><td>${esc(x.plu||'')}</td><td><input class="input" value="${esc(x.denumire)}" onchange="TRANS_LINES[${i}].denumire=this.value"></td><td><input class="input" type="number" step="0.001" value="${cant}" onchange="TRANS_LINES[${i}].cantitate=this.value;renderTransportLines()"></td><td>${lei(x.pret)}</td><td><b>${lei(val)}</b></td><td><button class="red" onclick="TRANS_LINES.splice(${i},1);renderTransportLines()">×</button></td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">Nu ai produse în fișa de transport.</td></tr>';
+  const t=$('trans-total'); if(t) t.textContent='Total transport: '+lei(total);
+}
+
+function exportTransportExcel(){
+  downloadExcel('fisa_transport.xlsx',TRANS_LINES.map(x=>({
+    sursa:$('trans-src')?.value||'',destinatie:$('trans-dst')?.value||'',nr_transport:$('trans-nr')?.value||'',
+    cod_bare:x.cod_bare,plu:x.plu,denumire:x.denumire,cantitate:parseCant(x.cantitate),pret:money(x.pret),valoare:parseCant(x.cantitate)*money(x.pret)
+  })),'Transport');
+}
+window.exportTransportExcel=exportTransportExcel;
+
+function transport(){
+  $('main').innerHTML=`
+    <h1>Fișă de transport</h1>
+    <div class="card">
+      <div class="grid2">
+        <input class="input" id="trans-src" placeholder="Magazin sursă">
+        <input class="input" id="trans-dst" placeholder="Magazin destinație">
+        <input class="input" id="trans-nr" placeholder="Nr. transport">
+      </div>
+      <div class="row">
+        <input class="input" id="trans-q" style="max-width:520px" placeholder="Cod bare / PLU / denumire" onkeydown="if(event.key==='Enter')addTransportByInput('trans-q')">
+        <button class="secondary" onclick="openCameraScanner('trans-q','addTransportByInput')">📷 Scanează cu camera</button>
+        <button onclick="addTransportByInput('trans-q')">Adaugă produs</button>
+        <button class="secondary" onclick="exportTransportExcel()">Export Excel</button>
+      </div>
+      <p id="trans-total" class="pill">Total transport: 0,00 lei</p>
+    </div>
+    <div class="card tbl-wrap">
+      <table><thead><tr><th>Cod</th><th>PLU</th><th>Produs</th><th>Cant.</th><th>Preț</th><th>Valoare</th><th></th></tr></thead><tbody id="trans-body"></tbody></table>
+    </div>`;
+  renderTransportLines();
 }
 
 /* =========================
@@ -1483,12 +1653,12 @@ function hasSGR(p){
 }
 
 function labelBasePrice(p){
-  const pret=money(p?.pret);
-  return hasSGR(p)?Math.max(0,pret-0.50):pret;
+  return money(p?.pret);
 }
 
 function labelTotalPrice(p){
-  return money(p?.pret);
+  const pret=money(p?.pret);
+  return hasSGR(p)?money(pret+0.50):pret;
 }
 
 function leiParts(n){
@@ -1653,7 +1823,7 @@ function makeBarcodeDataUrl(value){
   }
 }
 
-function exportLabelsWord(){
+async function exportLabelsWord(){
   const source=LABEL_LINES||[];
   if(!source.length){
     alert('Nu ai etichete de exportat.');
@@ -1667,41 +1837,29 @@ function exportLabelsWord(){
     const copies=Math.max(1,Math.round(parseCant(p.cantitate||1)));
     for(let i=0;i<copies;i++) items.push(p);
   });
-
   while(items.length%24!==0) items.push(null);
 
   const pages=[];
   for(let pageStart=0; pageStart<items.length; pageStart+=24){
     const pageItems=items.slice(pageStart,pageStart+24);
     const rows=[];
-
     for(let r=0;r<8;r++){
       const cells=[];
       for(let c=0;c<3;c++){
         const p=pageItems[r*3+c];
-
-        if(!p){
-          cells.push('<td class="label-cell empty"></td>');
-          continue;
-        }
-
+        if(!p){ cells.push('<td class="label-cell empty"></td>'); continue; }
         const base=leiParts(labelBasePrice(p));
         const total=lei(labelTotalPrice(p));
         const sgr=hasSGR(p);
         const code=String(p.cod_bare||p.plu||'');
         const img=makeBarcodeDataUrl(code);
-
         cells.push(`
           <td class="label-cell">
             <div class="label-inner">
               <div class="w-label-name">${esc(p.denumire||'')}</div>
               <div class="w-line"></div>
-              <div class="barcode-zone">
-                ${img?`<img class="w-barcode" src="${img}">`:`<div class="w-code">${esc(code)}</div>`}
-              </div>
-              <div class="w-price">
-                <span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span>
-              </div>
+              <div class="barcode-zone">${img?`<img class="w-barcode" src="${img}">`:`<div class="w-code">${esc(code)}</div>`}</div>
+              <div class="w-price"><span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span></div>
               <div class="w-bottom">
                 <div class="w-total">${sgr?`cu SGR<br><b>${total}</b>`:'BUC'}</div>
                 <div class="w-sgr">${sgr?'+ 0.50 BANI SGR':''}</div>
@@ -1711,148 +1869,41 @@ function exportLabelsWord(){
       }
       rows.push(`<tr>${cells.join('')}</tr>`);
     }
-
     pages.push(`<table class="labels-page">${rows.join('')}</table>`);
   }
 
-  const html=`<!doctype html>
-  <html>
-  <head>
-    <meta charset="utf-8">
-    <style>
-      @page{size:A4 portrait;margin:8mm;}
-      body{
-        font-family:Arial,Helvetica,sans-serif;
-        margin:0;
-        padding:0;
-        color:#111;
-        background:white;
-      }
+  const html=`<!doctype html><html><head><meta charset="utf-8"><style>
+    @page{size:A4 portrait;margin:8mm;}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#111;background:white;}
+    table.labels-page{width:189mm;height:264mm;border-collapse:collapse;table-layout:fixed;margin:0 auto;page-break-after:always;}
+    table.labels-page:last-child{page-break-after:auto;}
+    tr{height:33mm;}
+    td.label-cell{width:63mm;height:33mm;border:1px solid #999;padding:1.2mm;box-sizing:border-box;vertical-align:middle;text-align:center;overflow:hidden;}
+    td.empty{border:1px solid transparent;}
+    .label-inner{position:relative;width:100%;height:30.5mm;box-sizing:border-box;overflow:hidden;}
+    .w-label-name{font-size:${cfg.namePt || 8.5}pt;font-weight:700;line-height:1.05;min-height:7.2mm;max-height:10.2mm;overflow:hidden;text-align:center;word-break:normal;white-space:normal;}
+    .w-line{border-top:1px solid #333;margin:.6mm 3mm .5mm;}
+    .barcode-zone{height:${cfg.barcodeMm || 8}mm;text-align:center;overflow:hidden;}
+    .w-barcode{display:block;margin:0 auto;height:${cfg.barcodeMm || 8}mm;max-width:52mm;}
+    .w-code{font-size:7pt;height:${cfg.barcodeMm || 8}mm;line-height:${cfg.barcodeMm || 8}mm;}
+    .w-price{font-weight:900;line-height:.82;margin-top:.5mm;white-space:nowrap;text-align:center;}
+    .w-lei{font-size:${cfg.pricePt || 24}pt;}
+    .w-bani{font-size:${Math.max(12,Math.round((cfg.pricePt || 24)*0.52))}pt;vertical-align:top;}
+    .w-currency{font-size:${Math.max(8,Math.round((cfg.pricePt || 24)*0.33))}pt;font-weight:800;}
+    .w-bottom{position:absolute;left:1.6mm;right:1.6mm;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;font-weight:800;font-size:7.2pt;line-height:1.05;}
+    .w-total{text-align:left;min-width:20mm;}.w-total b{font-size:8pt;}
+    .w-sgr{background:#f7941d;color:white;border-radius:3mm;padding:1mm 1.8mm;max-width:27mm;text-align:center;line-height:1.05;font-size:7.2pt;}
+  </style></head><body>${pages.join('')}</body></html>`;
 
-      table.labels-page{
-        width:189mm;
-        height:264mm;
-        border-collapse:collapse;
-        table-layout:fixed;
-        margin:0 auto;
-        page-break-after:always;
-      }
-
-      table.labels-page:last-child{page-break-after:auto;}
-
-      tr{height:33mm;}
-
-      td.label-cell{
-        width:63mm;
-        height:33mm;
-        border:1px solid #999;
-        padding:1.2mm;
-        box-sizing:border-box;
-        vertical-align:middle;
-        text-align:center;
-        overflow:hidden;
-      }
-
-      td.empty{border:1px solid transparent;}
-
-      .label-inner{
-        position:relative;
-        width:100%;
-        height:30.5mm;
-        box-sizing:border-box;
-        overflow:hidden;
-      }
-
-      .w-label-name{
-        font-size:${cfg.namePt || 8.5}pt;
-        font-weight:700;
-        line-height:1.05;
-        min-height:7.2mm;
-        max-height:10.2mm;
-        overflow:hidden;
-        text-align:center;
-        word-break:normal;
-        white-space:normal;
-        mso-line-height-rule:exactly;
-      }
-
-      .w-line{
-        border-top:1px solid #333;
-        margin:.6mm 3mm .5mm;
-      }
-
-      .barcode-zone{
-        height:${cfg.barcodeMm || 8}mm;
-        display:block;
-        text-align:center;
-        overflow:hidden;
-      }
-
-      .w-barcode{
-        display:block;
-        margin:0 auto;
-        height:${cfg.barcodeMm || 8}mm;
-        max-width:52mm;
-      }
-
-      .w-code{
-        font-size:7pt;
-        height:${cfg.barcodeMm || 8}mm;
-        line-height:${cfg.barcodeMm || 8}mm;
-      }
-
-      .w-price{
-        font-weight:900;
-        line-height:.82;
-        margin-top:.5mm;
-        white-space:nowrap;
-        text-align:center;
-      }
-
-      .w-lei{font-size:${cfg.pricePt || 24}pt;}
-      .w-bani{font-size:${Math.max(12,Math.round((cfg.pricePt || 24)*0.52))}pt;vertical-align:top;}
-      .w-currency{font-size:${Math.max(8,Math.round((cfg.pricePt || 24)*0.33))}pt;font-weight:800;}
-
-      .w-bottom{
-        position:absolute;
-        left:1.6mm;
-        right:1.6mm;
-        bottom:0;
-        display:flex;
-        justify-content:space-between;
-        align-items:flex-end;
-        font-weight:800;
-        font-size:7.2pt;
-        line-height:1.05;
-      }
-
-      .w-total{
-        text-align:left;
-        min-width:20mm;
-      }
-
-      .w-total b{
-        font-size:8pt;
-      }
-
-      .w-sgr{
-        background:#f7941d;
-        color:white;
-        border-radius:3mm;
-        padding:1mm 1.8mm;
-        max-width:27mm;
-        text-align:center;
-        line-height:1.05;
-        font-size:7.2pt;
-      }
-    </style>
-  </head>
-  <body>${pages.join('')}</body>
-  </html>`;
-
+  let blob;
+  if(window.htmlDocx && typeof window.htmlDocx.asBlob==='function'){
+    blob=window.htmlDocx.asBlob(html,{orientation:'portrait',margins:{top:454,right:454,bottom:454,left:454}});
+  }else{
+    blob=new Blob(['\ufeff',html],{type:'application/msword'});
+  }
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(['\ufeff',html],{type:'application/msword'}));
-  a.download='etichete_pret_editabile_24_pe_pagina_v48.doc';
+  a.href=URL.createObjectURL(blob);
+  a.download=window.htmlDocx?'etichete_pret_editabile_24_pe_pagina.docx':'etichete_pret_editabile_24_pe_pagina.doc';
   a.click();
   URL.revokeObjectURL(a.href);
 }

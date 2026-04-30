@@ -687,3 +687,6 @@ th{
   max-height:70vh !important;
   overflow:auto !important;
 }
+
+/* v49 */
+.tbl-wrap input.input{margin:0; padding:8px; font-size:14px;}
