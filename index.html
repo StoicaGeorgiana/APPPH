@@ -1,55 +1,37 @@
-<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="theme-color" content="#2563eb"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon.svg"><title>GestiunePro v59 FINAL - Etichete raft</title><script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script><script src="https://unpkg.com/html5-qrcode"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jsbarcode.11.6/dist/JsBarcode.all.min.js"></script><style>
-:root{--bg:#0b1020;--card:#121a2d;--card2:#17223a;--b:#2b3b5f;--t:#eef2ff;--m:#95a3bd;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--orange:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17223a,#0b1020);color:var(--t);font-family:Arial,Helvetica,sans-serif}button,input,select{font:inherit}button{border:0;border-radius:10px;padding:10px 14px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}button.secondary{background:var(--card2);border:1px solid var(--b)}button.green{background:var(--green)}button.red{background:var(--red)}button.orange{background:var(--orange);color:#111}button:disabled{opacity:.45}.wrap{display:flex;min-height:100vh}.side{width:245px;background:rgba(18,26,45,.96);border-right:1px solid var(--b);padding:18px;position:sticky;top:0;height:100vh}.brand{font-size:22px;font-weight:900;margin-bottom:20px}.brand span{color:#60a5fa}.nav button{display:block;width:100%;text-align:left;margin:6px 0;background:transparent;border:1px solid transparent}.nav button:hover,.nav button.active{background:var(--card2);border-color:var(--b)}.main{flex:1;padding:24px;overflow:auto}.card{background:rgba(18,26,45,.92);border:1px solid var(--b);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.stat{font-size:28px;font-weight:900}.muted{color:var(--m);font-size:13px}.login{max-width:440px;margin:10vh auto}.input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--b);background:#0c1426;color:var(--t);margin:6px 0 12px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid rgba(43,59,95,.7);text-align:left;font-size:13px}th{color:#60a5fa}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.hide{display:none!important}.pill{display:inline-block;padding:3px 9px;border-radius:999px;background:#1d4ed8;font-size:12px}.pill.admin{background:#16a34a}.pill.no{background:#dc2626}.scanBox{min-height:260px;border:1px dashed var(--b);border-radius:12px;overflow:hidden;background:#060b16}.suggest{position:absolute;background:var(--card);border:1px solid var(--b);border-radius:10px;z-index:10;max-height:260px;overflow:auto;width:100%}.suggest div{padding:10px;border-bottom:1px solid var(--b);cursor:pointer}.suggest div:hover{background:var(--card2)}@media(max-width:850px){.wrap{display:block}.side{width:100%;height:auto;position:relative}.nav{display:grid;grid-template-columns:1fr 1fr;gap:6px}.main{padding:12px}.grid,.grid2{grid-template-columns:1fr}.side .row{justify-content:space-between}}
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <title>GestiunePro v62 FINAL</title>
 
-/* ===== V10 MOBIL / CT58 / ACCESIBILITATE ===== */
-:root{
-  --t:#ffffff;
-  --m:#d6def5;
-  --blue:#1d4ed8;
-  --green:#15803d;
-  --red:#b91c1c;
-  --orange:#d97706;
-}
-html,body,#app{min-height:100%;}
-body{font-size:18px;line-height:1.45;}
-.wrap{height:100vh;overflow:hidden;}
-.main{height:100vh;overflow-y:auto;overflow-x:hidden;padding-bottom:90px;scroll-behavior:smooth;}
-.side{overflow-y:auto;}
-button{min-height:52px;font-size:18px;border-radius:14px;padding:13px 18px;}
-.input,input,select,textarea{font-size:20px!important;min-height:54px;border-radius:14px!important;}
-.card{border-width:2px;border-radius:20px;}
-.nav button{font-size:18px;min-height:54px;margin:7px 0;font-weight:800;}
-.brand{font-size:28px;}
-h1{font-size:36px;margin-top:0;} h2{font-size:30px;} h3{font-size:24px;}
-.stat{font-size:38px;}
-.muted{font-size:16px;color:#dbeafe;}
-th,td{font-size:16px;padding:12px;}
-.table-wrap,.tbl-wrap{overflow-x:auto;width:100%;}
-table{min-width:760px;}
-#update-button-fixed{position:fixed;right:18px;bottom:18px;z-index:10001;background:#f59e0b;color:#111;border:2px solid #fff;box-shadow:0 10px 35px rgba(0,0,0,.5)}
-.accessibility-note{font-size:16px;color:#dbeafe;margin-top:8px}
-@media(max-width:900px){
-  body{font-size:20px;}
-  .wrap{display:block;height:100vh;overflow:auto;}
-  .side{width:100%;height:auto;position:sticky;top:0;z-index:20;border-bottom:2px solid var(--b);padding:14px;max-height:48vh;}
-  .main{height:auto;min-height:100vh;padding:14px 12px 110px;overflow:visible;}
-  .nav{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-  .nav button{font-size:17px;min-height:60px;padding:10px;}
-  .grid,.grid2{grid-template-columns:1fr!important;}
-  .card{padding:18px;margin-bottom:14px;}
-  h1{font-size:34px;line-height:1.15;}
-  h2{font-size:28px;}
-  button{width:auto;min-height:58px;font-size:19px;}
-  .row button{flex:1;}
-  .input,input,select,textarea{width:100%;font-size:22px!important;min-height:60px;}
-  table{min-width:820px;}
-  th,td{font-size:17px;padding:13px;}
-}
-@media(max-width:520px){
-  .nav{grid-template-columns:1fr;}
-  .brand{font-size:26px;}
-  h1{font-size:30px;}
-  .stat{font-size:34px;}
-  button{width:100%;}
-}
-</style></head><body><div id="app"></div><script src="app.js?v=21"></script><script src="v8_addon.js?v=21"></script><script src="v11_override.js?v=21"></script><script src="v12_labels_override.js?v=21"></script><script src="v13_intrari_fix.js?v=21"></script><script src="v14_fix.js?v=21"></script><script src="v16_patch.js?v=21"></script><script src="v17_patch.js?v=21"></script><script src="v18_patch.js?v=21"></script><script src="v20_scanner_plu_patch.js?v=21"></script><script src="v21_final_patch.js?v=22"></script><script src="v22_pro.js?v=22"></script></body></html>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <h1>Gestiune<span>Pro</span></h1>
+      <h2>Autentificare</h2>
+
+      <input type="email" id="email" placeholder="Email" autocomplete="username">
+      <input type="password" id="password" placeholder="Parolă" autocomplete="current-password">
+
+      <button type="button" onclick="login()">Login</button>
+      <p id="login-error" class="login-error"></p>
+    </div>
+  </div>
+
+  <div id="app" style="display:none"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
