@@ -740,13 +740,77 @@ th{
 }
 
 
-/* =========================
-   V57 - ETICHETE RAFT FĂRĂ COD DE BARE
-   ========================= */
-.shelf-label-preview .label-line{margin:6px 12px 6px;}
-.shelf-label-preview .shelf-price{margin-top:10px;}
-.shelf-label-preview .shelf-sgr-line{bottom:8px;}
+/* V59 ETICHETE RAFT FARA COD DE BARE */
+.labels-a4{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:12px;
+  align-items:start;
+}
+.shelf-label-preview{
+  background:white!important;
+  color:#111!important;
+  width:300px!important;
+  min-height:118px!important;
+  border-radius:14px!important;
+  padding:10px 14px!important;
+  text-align:center!important;
+  overflow:hidden!important;
+}
+.shelf-label-preview .label-barcode,
+.shelf-label-preview svg,
+.shelf-label-preview canvas{
+  display:none!important;
+}
+.label-edit-name{
+  width:100%;
+  border:0;
+  background:transparent;
+  color:#222;
+  text-align:center;
+  font-weight:900;
+  line-height:1.05;
+  min-height:32px;
+}
+.label-edit-price{
+  width:80px;
+  border:0;
+  background:transparent;
+  color:#222;
+  text-align:center;
+  font-size:1px;
+  height:1px;
+  opacity:0.01;
+}
+.shelf-label-preview .label-line{
+  border-top:1px solid #333;
+  margin:5px 0 4px;
+}
+.shelf-label-preview .label-price{
+  text-align:center;
+  font-weight:900;
+  line-height:.85;
+  white-space:nowrap;
+}
+.shelf-label-preview .label-lei{font-size:1.2em!important}
+.shelf-label-preview .label-bani{font-size:.55em!important;vertical-align:top}
+.shelf-label-preview .label-currency{font-size:.28em!important;margin-left:4px}
+.shelf-label-preview .label-bottom{
+  position:static!important;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-top:5px;
+  font-size:12px;
+}
+.shelf-label-preview .label-sgr{
+  background:#c8752c!important;
+  color:white!important;
+  border-radius:6px;
+  padding:3px 8px;
+  font-size:11px;
+  font-weight:900;
+}
 @media print{
-  .shelf-label-preview .label-name-full{height:10mm!important;font-size:9pt!important;}
-  .shelf-label-preview .label-price{margin-top:2mm!important;}
+  .side,.card button,.no-print{display:none!important}
 }
