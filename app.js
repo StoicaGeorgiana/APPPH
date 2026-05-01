@@ -1916,18 +1916,17 @@ function labelCardHtml(p,i){
   const total=lei(labelTotalPrice(p));
   const sgr=hasSGR(p);
 
-  return `<div class="price-label-24">
+  return `<div class="price-label-24 shelf-label-preview">
     <button class="label-x no-print" onclick="LABEL_LINES.splice(${i},1);renderLabels()">×</button>
     <div class="label-name label-name-full">${esc(p.denumire||'')}</div>
     <div class="label-line"></div>
-    <svg id="label-bc-${i}" class="label-barcode"></svg>
-    <div class="label-price">
+    <div class="label-price shelf-price">
       <span class="label-lei">${base.lei}</span>
       <span class="label-bani">,${base.bani}</span>
       <span class="label-currency">LEI</span>
     </div>
-    <div class="label-bottom label-bottom-sgr">
-      ${sgr?`<span class="label-total-sgr">${total}<br><small>cu SGR</small></span>`:'<span>BUC</span>'}
+    <div class="label-bottom label-bottom-sgr shelf-sgr-line">
+      ${sgr?`<span class="label-total-sgr">TOTAL: ${total}<br><small>cu SGR</small></span>`:'<span>BUC</span>'}
       ${sgr?`<span class="label-sgr">+ 0.50 BANI SGR</span>`:'<span></span>'}
     </div>
   </div>`;
@@ -1940,9 +1939,7 @@ function labelExportSettings(){
   };
   return {
     namePt:readNum('label-font-name',8.5),
-    pricePt:readNum('label-font-price',27),
-    barcodeMm:readNum('label-barcode-height',8),
-    rowMm:readNum('label-row-height',33)
+    pricePt:readNum('label-font-price',27)
   };
 }
 
@@ -1970,11 +1967,9 @@ function etichete(){
         <label class="row">Preț:
           <input class="input" id="label-font-price" type="number" min="18" max="40" step="1" value="27" style="max-width:90px"> pt
         </label>
-        <label class="row">Cod bare:
-          <input class="input" id="label-barcode-height" type="number" min="5" max="14" step="1" value="8" style="max-width:90px"> mm
-        </label>
-        <button class="secondary" onclick="printLabels()">Tipărește 24/pagină</button>
-        <button class="green" onclick="exportLabelsWord()">Export Word editabil</button>
+        <button class="secondary" onclick="printLabels()">Tipărește previzualizare</button>
+        <button class="green" onclick="exportLabelsWordSmall()">Word etichete mici 40×21 mm</button>
+        <button class="green" onclick="exportLabelsWordLarge()">Word etichete mari 50×35 mm</button>
         <button class="secondary" onclick="exportLabelsExcel()">Export Excel</button>
         <button class="red" onclick="clearLabels()">Golește etichete</button>
       </div>
@@ -1998,12 +1993,6 @@ function renderLabels(){
   if(!grid) return;
 
   grid.innerHTML=LABEL_LINES.length?LABEL_LINES.map((p,i)=>labelCardHtml(p,i)).join(''):'<div class="card">Nu ai etichete adăugate.</div>';
-
-  setTimeout(()=>LABEL_LINES.forEach((p,i)=>{
-    try{
-      JsBarcode(`#label-bc-${i}`,String(p.cod_bare||p.plu||''),{format:'CODE128',displayValue:true,height:34,width:1.3,fontSize:10,margin:0});
-    }catch(e){}
-  }),50);
 }
 
 function printLabels(){
@@ -2033,90 +2022,221 @@ function makeBarcodeDataUrl(value){
   }
 }
 
-async function exportLabelsWord(){
+function shelfLabelWordCell(p, cfg, model){
+  if(!p) return '<td class="label-cell empty"></td>';
+  const base=leiParts(labelBasePrice(p));
+  const total=lei(labelTotalPrice(p));
+  const sgr=hasSGR(p);
+
+  return `<td class="label-cell">
+    <div class="label-inner ${model}">
+      <div class="w-label-name">${esc(p.denumire||'')}</div>
+      <div class="w-price"><span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span></div>
+      ${sgr ? `
+        <div class="w-sgr-row">
+          <div class="w-sgr">+ 0.50 BANI SGR</div>
+          <div class="w-total">TOTAL: <b>${total}</b></div>
+        </div>` : `<div class="w-unit">BUC</div>`}
+    </div>
+  </td>`;
+}
+
+function exportLabelsWordModel(model){
   const source=LABEL_LINES||[];
   if(!source.length){
     alert('Nu ai etichete de exportat.');
     return;
   }
 
-  const cfg=labelExportSettings ? labelExportSettings() : {namePt:8.5, pricePt:24, barcodeMm:8, rowMm:33};
+  const cfg=labelExportSettings ? labelExportSettings() : {namePt:8.5, pricePt:27};
+  const isSmall=model==='small';
+
+  // Mică: 40 x 21 mm
+  // Mare: 50 x 35 mm (5 cm x 3,5 cm)
+  const labelW=isSmall?40:50;
+  const labelH=isSmall?21:35;
+
+  const cols=isSmall?5:4;
+  const rows=isSmall?13:8;
+  const perPage=cols*rows;
+  const pageW=cols*labelW;
+  const pageH=rows*labelH;
 
   const items=[];
   source.forEach(p=>{
     const copies=Math.max(1,Math.round(parseCant(p.cantitate||1)));
     for(let i=0;i<copies;i++) items.push(p);
   });
-  while(items.length%24!==0) items.push(null);
+  while(items.length%perPage!==0) items.push(null);
 
-  const pages=[];
-  for(let pageStart=0; pageStart<items.length; pageStart+=24){
-    const pageItems=items.slice(pageStart,pageStart+24);
-    const rows=[];
-    for(let r=0;r<8;r++){
-      const cells=[];
-      for(let c=0;c<3;c++){
-        const p=pageItems[r*3+c];
-        if(!p){ cells.push('<td class="label-cell empty"></td>'); continue; }
-        const base=leiParts(labelBasePrice(p));
-        const total=lei(labelTotalPrice(p));
-        const sgr=hasSGR(p);
-        const code=String(p.cod_bare||p.plu||'');
-        const img=makeBarcodeDataUrl(code);
-        cells.push(`
-          <td class="label-cell">
-            <div class="label-inner">
-              <div class="w-label-name">${esc(p.denumire||'')}</div>
-              <div class="w-line"></div>
-              <div class="barcode-zone">${img?`<img class="w-barcode" src="${img}">`:`<div class="w-code">${esc(code)}</div>`}</div>
-              <div class="w-price"><span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span></div>
-              <div class="w-bottom">
-                <div class="w-total">${sgr?`cu SGR<br><b>${total}</b>`:'BUC'}</div>
-                <div class="w-sgr">${sgr?'+ 0.50 BANI SGR':''}</div>
-              </div>
-            </div>
-          </td>`);
-      }
-      rows.push(`<tr>${cells.join('')}</tr>`);
-    }
-    pages.push(`<table class="labels-page">${rows.join('')}</table>`);
+  function cellHtml(p){
+    if(!p) return '<td class="label-cell empty"></td>';
+
+    const base=leiParts(labelBasePrice(p));
+    const total=lei(labelTotalPrice(p));
+    const sgr=hasSGR(p);
+
+    return `<td class="label-cell">
+      <div class="label-box ${isSmall?'small':'large'}">
+        <div class="name">${esc(p.denumire||'')}</div>
+        <div class="sep"></div>
+        <div class="price">
+          <span class="lei">${base.lei}</span><span class="bani">,${base.bani}</span><span class="cur"> LEI</span>
+        </div>
+        ${sgr ? `
+          <div class="sgr-banner">+ 0.50 BANI SGR</div>
+          <div class="total">TOTAL: ${total}</div>
+        ` : `<div class="unit">BUC</div>`}
+      </div>
+    </td>`;
   }
 
-  const html=`<!doctype html><html><head><meta charset="utf-8"><style>
-    @page{size:A4 portrait;margin:8mm;}
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#111;background:white;}
-    table.labels-page{width:189mm;height:264mm;border-collapse:collapse;table-layout:fixed;margin:0 auto;page-break-after:always;}
-    table.labels-page:last-child{page-break-after:auto;}
-    tr{height:33mm;}
-    td.label-cell{width:63mm;height:33mm;border:1px solid #999;padding:1.2mm;box-sizing:border-box;vertical-align:middle;text-align:center;overflow:hidden;}
-    td.empty{border:1px solid transparent;}
-    .label-inner{position:relative;width:100%;height:30.5mm;box-sizing:border-box;overflow:hidden;}
-    .w-label-name{font-size:${cfg.namePt || 8.5}pt;font-weight:700;line-height:1.05;min-height:7.2mm;max-height:10.2mm;overflow:hidden;text-align:center;word-break:normal;white-space:normal;}
-    .w-line{border-top:1px solid #333;margin:.6mm 3mm .5mm;}
-    .barcode-zone{height:${cfg.barcodeMm || 8}mm;text-align:center;overflow:hidden;}
-    .w-barcode{display:block;margin:0 auto;height:${cfg.barcodeMm || 8}mm;max-width:52mm;}
-    .w-code{font-size:7pt;height:${cfg.barcodeMm || 8}mm;line-height:${cfg.barcodeMm || 8}mm;}
-    .w-price{font-weight:900;line-height:.82;margin-top:.5mm;white-space:nowrap;text-align:center;}
-    .w-lei{font-size:${cfg.pricePt || 24}pt;}
-    .w-bani{font-size:${Math.max(12,Math.round((cfg.pricePt || 24)*0.52))}pt;vertical-align:top;}
-    .w-currency{font-size:${Math.max(8,Math.round((cfg.pricePt || 24)*0.33))}pt;font-weight:800;}
-    .w-bottom{position:absolute;left:1.6mm;right:1.6mm;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;font-weight:800;font-size:7.2pt;line-height:1.05;}
-    .w-total{text-align:left;min-width:20mm;}.w-total b{font-size:8pt;}
-    .w-sgr{background:#f7941d;color:white;border-radius:3mm;padding:1mm 1.8mm;max-width:27mm;text-align:center;line-height:1.05;font-size:7.2pt;}
-  </style></head><body>${pages.join('')}</body></html>`;
+  const pages=[];
+  for(let pageStart=0; pageStart<items.length; pageStart+=perPage){
+    const pageItems=items.slice(pageStart,pageStart+perPage);
+    const trs=[];
+    for(let r=0;r<rows;r++){
+      const tds=[];
+      for(let c=0;c<cols;c++) tds.push(cellHtml(pageItems[r*cols+c]));
+      trs.push(`<tr>${tds.join('')}</tr>`);
+    }
+    pages.push(`<table class="labels-page">${trs.join('')}</table>`);
+  }
+
+  const nameFont=isSmall?7.2:8.5;
+  const priceLei=isSmall?17:25;
+  const priceBani=isSmall?9:13;
+  const curFont=isSmall?6:8;
+  const sgrFont=isSmall?5.2:6.8;
+  const totalFont=isSmall?5.8:7.5;
+
+  const html=`<!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      @page{size:A4 portrait;margin:4mm;}
+      body{
+        font-family:Arial,Helvetica,sans-serif;
+        margin:0;
+        padding:0;
+        color:#222;
+        background:white;
+      }
+      table.labels-page{
+        width:${pageW}mm;
+        height:${pageH}mm;
+        border-collapse:collapse;
+        table-layout:fixed;
+        margin:0 auto;
+        page-break-after:always;
+      }
+      table.labels-page:last-child{page-break-after:auto;}
+      tr{height:${labelH}mm;}
+      td.label-cell{
+        width:${labelW}mm;
+        height:${labelH}mm;
+        border:0.3mm solid #aeb4c0;
+        padding:1.2mm;
+        box-sizing:border-box;
+        vertical-align:middle;
+        text-align:center;
+        overflow:hidden;
+      }
+      td.empty{border:0.3mm solid #e5e7eb;}
+      .label-box{
+        width:100%;
+        height:${labelH-2.4}mm;
+        box-sizing:border-box;
+        text-align:center;
+        overflow:hidden;
+        position:relative;
+      }
+      .name{
+        font-weight:900;
+        font-size:${nameFont}pt;
+        line-height:1.08;
+        text-align:center;
+        height:${isSmall?7.2:9.5}mm;
+        overflow:hidden;
+        white-space:normal;
+      }
+      .sep{
+        border-top:0.25mm solid #333;
+        margin:${isSmall?'.6mm 0 .7mm':'1mm 0 1.2mm'};
+      }
+      .price{
+        text-align:center;
+        font-weight:900;
+        line-height:.82;
+        white-space:nowrap;
+        margin-top:${isSmall?'.4mm':'.5mm'};
+      }
+      .lei{
+        font-size:${priceLei}pt;
+        font-weight:900;
+      }
+      .bani{
+        font-size:${priceBani}pt;
+        font-weight:900;
+        vertical-align:top;
+      }
+      .cur{
+        font-size:${curFont}pt;
+        font-weight:900;
+      }
+      .unit{
+        position:absolute;
+        left:0;
+        bottom:0;
+        font-size:${isSmall?5.8:7.3}pt;
+        font-weight:900;
+      }
+      .sgr-banner{
+        position:absolute;
+        left:0;
+        right:0;
+        bottom:${isSmall?3.4:4.5}mm;
+        background:#c8752c;
+        color:white;
+        font-size:${sgrFont}pt;
+        line-height:1.1;
+        font-weight:900;
+        padding:${isSmall?'.35mm 0':'.55mm 0'};
+        text-align:center;
+      }
+      .total{
+        position:absolute;
+        left:0;
+        right:0;
+        bottom:0;
+        font-size:${totalFont}pt;
+        font-weight:900;
+        text-align:center;
+      }
+    </style>
+  </head>
+  <body>${pages.join('')}</body>
+  </html>`;
 
   let blob;
   if(window.htmlDocx && typeof window.htmlDocx.asBlob==='function'){
-    blob=window.htmlDocx.asBlob(html,{orientation:'portrait',margins:{top:454,right:454,bottom:454,left:454}});
+    blob=window.htmlDocx.asBlob(html,{orientation:'portrait',margins:{top:227,right:227,bottom:227,left:227}});
   }else{
     blob=new Blob(['\ufeff',html],{type:'application/msword'});
   }
+
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=window.htmlDocx?'etichete_pret_editabile_24_pe_pagina.docx':'etichete_pret_editabile_24_pe_pagina.doc';
+  const suffix=isSmall?'mici_40x21mm':'mari_50x35mm';
+  a.download=window.htmlDocx?`etichete_raft_${suffix}.docx`:`etichete_raft_${suffix}.doc`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+function exportLabelsWordSmall(){ exportLabelsWordModel('small'); }
+function exportLabelsWordLarge(){ exportLabelsWordModel('large'); }
+async function exportLabelsWord(){ exportLabelsWordLarge(); }
 
 /* =========================
    BACKUP

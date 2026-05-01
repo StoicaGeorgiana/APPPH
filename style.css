@@ -738,3 +738,15 @@ th{
   }
   .cashier-info{font-size:9pt!important}
 }
+
+
+/* =========================
+   V57 - ETICHETE RAFT FĂRĂ COD DE BARE
+   ========================= */
+.shelf-label-preview .label-line{margin:6px 12px 6px;}
+.shelf-label-preview .shelf-price{margin-top:10px;}
+.shelf-label-preview .shelf-sgr-line{bottom:8px;}
+@media print{
+  .shelf-label-preview .label-name-full{height:10mm!important;font-size:9pt!important;}
+  .shelf-label-preview .label-price{margin-top:2mm!important;}
+}
