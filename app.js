@@ -56,6 +56,15 @@ const lei=n=>(Number(n)||0).toLocaleString('ro-RO',{minimumFractionDigits:2,maxi
 const isSGR=p=>norm(p?.denumire||'').includes('sgr');
 const sgrVal=(p,q)=>isSGR(p)?parseCant(q)*0.50:0;
 
+function tvaProcentFix(v){
+  const n = money(v);
+  if(!n) return '';
+  const procent = n * 100;
+  if(procent >= 0 && procent < 15) return '11%';
+  if(procent >= 15 && procent < 30) return '21%';
+  return '';
+}
+
 /* =========================
    LOGIN / LOGOUT
    ========================= */
@@ -568,9 +577,18 @@ function normIntr(row,i,prodLookup=null){
 
   const data=excelDate(getAny(row,['data','date']));
   const cant=money(getAny(row,['cantitate','cant','qty','total cantitate']));
-  const pret=money(getAny(row,['pret','preț','pret fara tva','pret achizitie','pret_v_tva','pret cu tva']));
-  const prodMatch = prodLookup ? (prodLookup.get(cod) || prodLookup.get(plu) || null) : null;
-  const pretCuTvaMama = prodMatch ? money(prodMatch.pret) : money(getAny(row,['pret cu tva','pret_cu_tva','pret_v_tva','preț cu tva']));
+
+  // PREȚ ACHIZIȚIE FĂRĂ TVA = coloana F "pret" din sheet-ul "tva 11, 21"
+  const pret=money(getAny(row,['pret','preț','pret fara tva','pret achizitie']));
+
+  // PREȚ ACHIZIȚIE CU TVA = ultima coloană L "pret cu tva" din sheet-ul "tva 11, 21"
+  // Nu mai luăm prețul din TABEL / produse, fiindcă acela este preț de vânzare.
+  const pretCuTvaMama=money(getAny(row,['pret cu tva','pret_cu_tva','preț cu tva','pret tva achizitie']));
+
+  // TVA procentual = coloana K "tva2", forțat la 11% / 21%
+  const tvaRaw=getAny(row,['tva2','tva procent','procent tva','cota tva']);
+  const tvaProcent=tvaProcentFix(tvaRaw);
+
   const nr=String(getAny(row,['nr','numar','număr','document','nr document','numar document'])||'').trim();
 
   return {
@@ -584,6 +602,7 @@ function normIntr(row,i,prodLookup=null){
     pret,
     valoare: money(getAny(row,['valoare','valoare fara tva','total valoare'])) || cant*pret,
     tva: money(getAny(row,['tva','valoare tva','tva valoare'])),
+    tva_procent:tvaProcent,
     pret_cu_tva_mama: pretCuTvaMama,
     furnizor: String(getAny(row,['furnizor','cod fiscal','cui','cod_fiscal'])||'').trim()
   };
@@ -975,6 +994,85 @@ function sendCartToCasa(){
   go('coduri');
 }
 
+
+/* =========================
+   CODURI CASĂ - GENERATOR EAN COMPATIBIL
+   ========================= */
+function onlyDigits(v){
+  return String(v||'').replace(/\D/g,'');
+}
+
+function eanCheckDigit(base){
+  const s=onlyDigits(base);
+  let sum=0;
+  for(let i=s.length-1, pos=1; i>=0; i--, pos++){
+    const n=Number(s[i]||0);
+    sum += (pos % 2 === 1) ? n*3 : n;
+  }
+  return String((10 - (sum % 10)) % 10);
+}
+
+function isValidEAN8(code){
+  const s=onlyDigits(code);
+  if(s.length!==8) return false;
+  return eanCheckDigit(s.slice(0,7))===s[7];
+}
+
+function isValidEAN13(code){
+  const s=onlyDigits(code);
+  if(s.length!==13) return false;
+  return eanCheckDigit(s.slice(0,12))===s[12];
+}
+
+function leadingCodeFromName(product){
+  // Caută codul numeric scris la începutul denumirii:
+  // exemplu: "1000727 MANDARINE" => "1000727"
+  const den=String(product?.denumire||'').trim();
+  const m=den.match(/^(\d{3,14})(?=\s|[-–—]|$)/);
+  return m ? m[1] : '';
+}
+
+function makeInternalEAN13FromCode(code){
+  // Prefix intern de magazin: 29 + codul din fața denumirii / codul produsului.
+  // Păstrează cifrele importante în interiorul EAN13.
+  let digits=onlyDigits(code);
+  if(!digits) digits='0';
+  const base='29' + digits.slice(-10).padStart(10,'0');
+  return base + eanCheckDigit(base);
+}
+
+function getCashierBarcode(product){
+  const leading=leadingCodeFromName(product);
+  const original=onlyDigits(product?.cod_bare || product?.plu || product?.id || '');
+
+  // 1) Dacă produsul are deja EAN8/EAN13 valid, îl păstrăm exact.
+  if(isValidEAN13(original)) return {value:original, format:'EAN13', generated:false, original, source:'cod_bare'};
+  if(isValidEAN8(original)) return {value:original, format:'EAN8', generated:false, original, source:'cod_bare'};
+
+  // 2) Dacă denumirea începe cu cifre, generăm codul de casă pe baza acelor cifre.
+  // Exemplu: "1000727 MANDARINE" => EAN13 intern valid care conține baza 1000727.
+  if(leading){
+    const generated=makeInternalEAN13FromCode(leading);
+    return {value:generated, format:'EAN13', generated:true, original, source:'denumire', leading};
+  }
+
+  // 3) Fallback: generăm din cod_bare / PLU existent.
+  const generated=makeInternalEAN13FromCode(original);
+  return {value:generated, format:'EAN13', generated:true, original, source:'cod_bare', leading:''};
+}
+
+function barcodeInfoText(info){
+  if(!info) return '';
+  if(info.generated && info.source==='denumire'){
+    return `Cod casă generat: ${info.value} · baza: ${info.leading}`;
+  }
+  if(info.generated){
+    return `Cod casă generat: ${info.value} · cod original: ${info.original || '—'}`;
+  }
+  return `Cod casă valid: ${info.value}`;
+}
+
+
 function getCasaItems(){
   try{
     const saved=JSON.parse(localStorage.getItem('gp_coduri_casa_v44')||'[]');
@@ -997,35 +1095,72 @@ function coduri(){
 
   casaItems.forEach(p=>{
     const n=mode==='repeat'?Math.max(1,Math.round(parseCant(p.cantitate))):1;
-    for(let i=1;i<=n;i++) items.push({...p,scanIndex:i,scanQty:n});
+    const bc=getCashierBarcode(p);
+    for(let i=1;i<=n;i++) items.push({...p,scanIndex:i,scanQty:n,cashierBarcode:bc});
   });
+
+  const generatedCount=items.filter(x=>x.cashierBarcode?.generated).length;
 
   $('main').innerHTML=`
     <h1>Coduri scanabile pentru casa de marcat</h1>
 
-    <div class="card no-print row">
-      <button onclick="go('cos')">Înapoi la coș</button>
-      <button onclick="window.print()">Printează coduri</button>
-      <button class="secondary" onclick="localStorage.setItem('barcodeMode','repeat');coduri()">Repetă după cantitate</button>
-      <button class="secondary" onclick="localStorage.setItem('barcodeMode','once');coduri()">Un cod/produs</button>
-      <button class="red" onclick="clearCasaItems()">Golește coduri casă</button>
+    <div class="card no-print">
+      <div class="row">
+        <button onclick="go('cos')">Înapoi la coș</button>
+        <button onclick="window.print()">Printează coduri</button>
+        <button class="secondary" onclick="localStorage.setItem('barcodeMode','repeat');coduri()">Repetă după cantitate</button>
+        <button class="secondary" onclick="localStorage.setItem('barcodeMode','once');coduri()">Un cod/produs</button>
+        <button class="red" onclick="clearCasaItems()">Golește coduri casă</button>
+      </div>
+      <div class="notice ${generatedCount?'warn':'good'}">
+        ${generatedCount
+          ? `Atenție: ${generatedCount} coduri au fost generate în EAN13 valid, folosind prioritar cifrele din fața denumirii produsului. Pentru vânzare, codul generat trebuie asociat în casa de marcat cu produsul respectiv.`
+          : `Toate codurile sunt EAN valide.`}
+      </div>
     </div>
 
     <div class="barcode-grid">
-      ${items.length?items.map((p,i)=>`
-        <div class="label-card">
-          <b>${esc(p.cod_bare||p.plu)} ${esc(p.denumire)}</b>
-          <p>Cod: ${esc(p.cod_bare||p.plu)}</p>
-          <svg id="bc-${i}"></svg>
+      ${items.length?items.map((p,i)=>{
+        const bc=p.cashierBarcode;
+        return `
+        <div class="label-card cashier-label">
+          <b>${esc(p.denumire)}</b>
+          <p class="cashier-info">${esc(barcodeInfoText(bc))}</p>
+          <div class="cashier-barcode-wrap"><svg id="bc-${i}"></svg></div>
           <p>${mode==='repeat'?`Bucată ${p.scanIndex} din ${p.scanQty}`:`Cantitate: ${fmtCant(p.cantitate)}`}</p>
-        </div>`).join(''):'<div class="card">Nu ai coduri trimise din coș.</div>'}
+        </div>`;
+      }).join(''):'<div class="card">Nu ai coduri trimise din coș.</div>'}
     </div>`;
 
   setTimeout(()=>items.forEach((p,i)=>{
     try{
-      JsBarcode(`#bc-${i}`,String(p.cod_bare||p.plu||''),{format:'CODE128',displayValue:true,height:70,width:2});
-    }catch(e){}
-  }),50);
+      const bc=p.cashierBarcode;
+      JsBarcode(`#bc-${i}`,bc.value,{
+        format:bc.format,
+        displayValue:true,
+        height:95,
+        width:2.8,
+        fontSize:20,
+        margin:18,
+        background:'#ffffff',
+        lineColor:'#000000'
+      });
+    }catch(e){
+      console.error('Nu pot genera cod casă', p, e);
+      try{
+        JsBarcode(`#bc-${i}`,String(p.cashierBarcode?.value||p.cod_bare||p.plu||''),{
+          format:'CODE128',
+          displayValue:true,
+          height:95,
+          width:2.8,
+          fontSize:20,
+          margin:18,
+          background:'#ffffff',
+          lineColor:'#000000'
+        });
+      }catch(err){}
+    }
+  }),80);
 }
 
 /* =========================
@@ -1379,6 +1514,7 @@ async function renderIntrariView(filters=null){
             <th>Cant.</th>
             <th>Preț</th>
             <th>Preț cu TVA MAMA</th>
+            <th>TVA %</th>
             <th>Valoare</th>
             <th>Furnizor</th>
           </tr>
@@ -1394,9 +1530,10 @@ async function renderIntrariView(filters=null){
               <td>${fmtCant(x.cantitate)}</td>
               <td>${lei(x.pret)}</td>
               <td>${x.pret_cu_tva_mama?lei(x.pret_cu_tva_mama):''}</td>
+              <td>${esc(x.tva_procent||'')}</td>
               <td>${lei(x.valoare)}</td>
               <td>${esc(x.furnizor||'')}</td>
-            </tr>`).join('') || '<tr><td colspan="10" class="muted">Nu există rezultate.</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="11" class="muted">Nu există rezultate.</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -1449,17 +1586,40 @@ async function exportIntrariExcel(){
 /* =========================
    RECEPȚIE MARFĂ / FIȘĂ TRANSPORT - v49
    ========================= */
+function addProductToReceptie(p){
+  if(!p) return toast('Produs inexistent');
+
+  REC_LINES.push({
+    id:p.id,
+    cod_bare:p.cod_bare,
+    plu:p.plu,
+    denumire:p.denumire,
+    pret:money(p.pret),
+    pret_cu_tva_mama:money(p.pret_cu_tva_mama || p["pret cu tva"] || p.pret),
+    tva_procent:p.tva_procent || '',
+    cantitate:1
+  });
+
+  const q=$('rec-q');
+  if(q) q.value='';
+  document.querySelectorAll('.suggest').forEach(x=>x.classList.add('hide'));
+  renderReceptieLines();
+}
+window.addProductToReceptie=addProductToReceptie;
+
 async function addRecByInput(inputId='rec-q'){
   const q=$(inputId)?.value||'';
   const p=await byCode(q);
   if(!p) return toast('Produs inexistent');
-  REC_LINES.push({
-    id:p.id,cod_bare:p.cod_bare,plu:p.plu,denumire:p.denumire,pret:money(p.pret),pret_cu_tva_mama:money(p.pret),cantitate:1
-  });
-  if($(inputId)) $(inputId).value='';
-  renderReceptieLines();
+  addProductToReceptie(p);
 }
 window.addRecByInput=addRecByInput;
+
+window.pickReceptie=async function(id){
+  const p=await getProdById(id);
+  addProductToReceptie(p);
+};
+
 
 function renderReceptieLines(){
   const body=$('rec-body'); if(!body) return;
@@ -1483,6 +1643,24 @@ function renderReceptieLines(){
   const t=$('rec-total'); if(t) t.textContent='Total recepție: '+lei(total);
 }
 
+
+function clearReceptie(){
+  if(!confirm('Golești toate produsele din recepția curentă?')) return;
+  REC_LINES=[];
+  renderReceptieLines();
+  const q=$('rec-q'); if(q) q.value='';
+}
+window.clearReceptie=clearReceptie;
+
+function clearTransport(){
+  if(!confirm('Golești toate produsele din fișa de transport curentă?')) return;
+  TRANS_LINES=[];
+  renderTransportLines();
+  const q=$('trans-q'); if(q) q.value='';
+}
+window.clearTransport=clearTransport;
+
+
 async function saveReceptieLocal(){
   if(!REC_LINES.length) return toast('Nu ai produse în recepție.');
   const data=new Date().toISOString().slice(0,10);
@@ -1493,6 +1671,7 @@ async function saveReceptieLocal(){
     data,nr,cod_bare:x.cod_bare,plu:x.plu,denumire:x.denumire,
     cantitate:parseCant(x.cantitate),pret:money(x.pret),
     pret_cu_tva_mama:money(x.pret_cu_tva_mama),
+    tva_procent:x.tva_procent||'',
     valoare:parseCant(x.cantitate)*money(x.pret),tva:0,furnizor
   }));
   await putMany('intrari',rows);
@@ -1518,11 +1697,15 @@ function receptie(){
         <input class="input" id="rec-doc" placeholder="Nr. document / factură">
       </div>
       <div class="row">
-        <input class="input" id="rec-q" style="max-width:520px" placeholder="Cod bare / PLU / denumire" onkeydown="if(event.key==='Enter')addRecByInput('rec-q')">
+        <div style="position:relative;max-width:620px;flex:1">
+          <input class="input" id="rec-q" style="max-width:100%" placeholder="Cod bare / PLU / denumire" oninput="showSuggest('rec-q','pickReceptie')" onkeydown="if(event.key==='Enter')addRecByInput('rec-q')">
+          <div class="suggest hide" id="rec-q-s"></div>
+        </div>
         <button class="secondary" onclick="openCameraScanner('rec-q','addRecByInput')">📷 Scanează cu camera</button>
         <button onclick="addRecByInput('rec-q')">Adaugă produs</button>
         <button class="green" onclick="saveReceptieLocal()">Salvează în intrări</button>
         <button class="secondary" onclick="exportReceptieExcel()">Export Excel</button>
+        <button class="red" onclick="clearReceptie()">Golește recepția</button>
       </div>
       <p id="rec-total" class="pill">Total recepție: 0,00 lei</p>
     </div>
@@ -1532,15 +1715,38 @@ function receptie(){
   renderReceptieLines();
 }
 
+function addProductToTransport(p){
+  if(!p) return toast('Produs inexistent');
+
+  TRANS_LINES.push({
+    id:p.id,
+    cod_bare:p.cod_bare,
+    plu:p.plu,
+    denumire:p.denumire,
+    pret:money(p.pret),
+    cantitate:1
+  });
+
+  const q=$('trans-q');
+  if(q) q.value='';
+  document.querySelectorAll('.suggest').forEach(x=>x.classList.add('hide'));
+  renderTransportLines();
+}
+window.addProductToTransport=addProductToTransport;
+
 async function addTransportByInput(inputId='trans-q'){
   const q=$(inputId)?.value||'';
   const p=await byCode(q);
   if(!p) return toast('Produs inexistent');
-  TRANS_LINES.push({id:p.id,cod_bare:p.cod_bare,plu:p.plu,denumire:p.denumire,pret:money(p.pret),cantitate:1});
-  if($(inputId)) $(inputId).value='';
-  renderTransportLines();
+  addProductToTransport(p);
 }
 window.addTransportByInput=addTransportByInput;
+
+window.pickTransport=async function(id){
+  const p=await getProdById(id);
+  addProductToTransport(p);
+};
+
 
 function renderTransportLines(){
   const body=$('trans-body'); if(!body) return;
@@ -1570,10 +1776,14 @@ function transport(){
         <input class="input" id="trans-nr" placeholder="Nr. transport">
       </div>
       <div class="row">
-        <input class="input" id="trans-q" style="max-width:520px" placeholder="Cod bare / PLU / denumire" onkeydown="if(event.key==='Enter')addTransportByInput('trans-q')">
+        <div style="position:relative;max-width:620px;flex:1">
+          <input class="input" id="trans-q" style="max-width:100%" placeholder="Cod bare / PLU / denumire" oninput="showSuggest('trans-q','pickTransport')" onkeydown="if(event.key==='Enter')addTransportByInput('trans-q')">
+          <div class="suggest hide" id="trans-q-s"></div>
+        </div>
         <button class="secondary" onclick="openCameraScanner('trans-q','addTransportByInput')">📷 Scanează cu camera</button>
         <button onclick="addTransportByInput('trans-q')">Adaugă produs</button>
         <button class="secondary" onclick="exportTransportExcel()">Export Excel</button>
+        <button class="red" onclick="clearTransport()">Golește fișa</button>
       </div>
       <p id="trans-total" class="pill">Total transport: 0,00 lei</p>
     </div>

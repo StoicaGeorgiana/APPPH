@@ -690,3 +690,51 @@ th{
 
 /* v49 */
 .tbl-wrap input.input{margin:0; padding:8px; font-size:14px;}
+
+
+/* v51 coduri casa scanabile */
+.cashier-label{
+  border-radius:0 !important;
+  padding:16px !important;
+  min-height:230px;
+  background:#fff !important;
+  color:#000 !important;
+}
+
+.cashier-label b{
+  display:block;
+  font-size:16px;
+  line-height:1.2;
+  min-height:38px;
+}
+
+.cashier-info{
+  font-size:13px;
+  color:#333;
+  margin:8px 0 6px;
+}
+
+.cashier-barcode-wrap{
+  background:#fff;
+  padding:10px 18px;
+  margin:0 auto;
+  display:inline-block;
+  max-width:100%;
+  box-sizing:border-box;
+}
+
+.cashier-barcode-wrap svg{
+  max-width:100%;
+}
+
+@media print{
+  .cashier-label{
+    page-break-inside:avoid;
+    break-inside:avoid;
+    border:1px solid #000 !important;
+    margin:6mm auto !important;
+    width:90mm !important;
+    min-height:45mm !important;
+  }
+  .cashier-info{font-size:9pt!important}
+}
