@@ -545,7 +545,12 @@ function normProd(row,i){
 }
 
 function excelDate(v){
-  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if(v instanceof Date && !isNaN(v)){
+    const y=v.getFullYear();
+    const m=String(v.getMonth()+1).padStart(2,'0');
+    const d=String(v.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
 
   if(typeof v==='number' && window.XLSX){
     try{
@@ -608,21 +613,42 @@ function normIntr(row,i,prodLookup=null){
   };
 }
 
+
+function hasLeadingProductDigits(p){
+  const den=String(p?.denumire||'').trim();
+  return /^\d{3,14}(\s|[-–—]|$)/.test(den);
+}
+
+function samePriceCents(a,b){
+  return Math.round(money(a)*100)===Math.round(money(b)*100);
+}
+
 async function detectPriceChangesBeforeImport(newProducts){
   const oldProducts=await getAll('produse');
   const oldMap=new Map(oldProducts.map(p=>[p.id,p]));
+
+  // Curățăm lista la fiecare import. Nu păstrăm produse vechi care nu mai sunt în SCANARECODPRETURI.
   PRICE_CHANGES=[];
 
   newProducts.forEach(p=>{
+    // Prețuri schimbate: afișăm doar produse care există în fișierul importat
+    // și au cod/cifre la începutul denumirii. Produsele scoase din fișier nu mai apar.
+    if(!hasLeadingProductDigits(p)) return;
+
     const old=oldMap.get(p.id);
-    if(old && money(old.pret)!==money(p.pret)){
+    if(!old) return;
+
+    const oldPrice=money(old.pret);
+    const newPrice=money(p.pret);
+
+    if(!samePriceCents(oldPrice,newPrice)){
       PRICE_CHANGES.push({
         id:p.id,
         cod_bare:p.cod_bare,
         plu:p.plu,
         denumire:p.denumire,
-        pret_vechi:money(old.pret),
-        pret_nou:money(p.pret),
+        pret_vechi:oldPrice,
+        pret_nou:newPrice,
         data:new Date().toLocaleString('ro-RO')
       });
     }
@@ -1248,7 +1274,9 @@ function renderPreturi(){
   const tb=$('preturi-body');
   if(!tb) return;
 
-  tb.innerHTML=PRICE_CHANGES.length?PRICE_CHANGES.map(x=>`
+  const changes=(PRICE_CHANGES||[]).filter(x=>hasLeadingProductDigits(x) && !samePriceCents(x.pret_vechi,x.pret_nou));
+
+  tb.innerHTML=changes.length?changes.map(x=>`
     <tr>
       <td>${esc(x.cod_bare||'')}</td>
       <td>${esc(x.plu||'')}</td>
@@ -1267,13 +1295,15 @@ function clearPreturiSchimbate(){
 }
 
 function sendPreturiToEtichete(){
-  PRICE_CHANGES.forEach(x=>addLabelProduct({
-    id:x.id,
-    cod_bare:x.cod_bare,
-    plu:x.plu,
-    denumire:x.denumire,
-    pret:x.pret_nou
-  },'preturi schimbate'));
+  (PRICE_CHANGES||[])
+    .filter(x=>hasLeadingProductDigits(x) && !samePriceCents(x.pret_vechi,x.pret_nou))
+    .forEach(x=>addLabelProduct({
+      id:x.id,
+      cod_bare:x.cod_bare,
+      plu:x.plu,
+      denumire:x.denumire,
+      pret:x.pret_nou
+    },'preturi schimbate'));
 
   go('etichete');
 }
@@ -2048,14 +2078,12 @@ function exportLabelsWordModel(model){
     return;
   }
 
-  const cfg=labelExportSettings ? labelExportSettings() : {namePt:8.5, pricePt:27};
   const isSmall=model==='small';
 
   // Mică: 40 x 21 mm
-  // Mare: 50 x 35 mm (5 cm x 3,5 cm)
+  // Mare: 50 x 35 mm, 3 coloane x 8 rânduri
   const labelW=isSmall?40:50;
   const labelH=isSmall?21:35;
-
   const cols=isSmall?5:3;
   const rows=isSmall?13:8;
   const perPage=cols*rows;
@@ -2070,24 +2098,22 @@ function exportLabelsWordModel(model){
   while(items.length%perPage!==0) items.push(null);
 
   function cellHtml(p){
-    if(!p) return '<td class="label-cell empty"></td>';
+    if(!p) return '<td class="label-cell empty">&nbsp;</td>';
 
     const base=leiParts(labelBasePrice(p));
     const total=lei(labelTotalPrice(p));
     const sgr=hasSGR(p);
 
     return `<td class="label-cell">
-      <div class="label-box ${isSmall?'small':'large'}">
-        <div class="name">${esc(p.denumire||'')}</div>
-        <div class="sep"></div>
-        <div class="price">
-          <span class="lei">${base.lei}</span><span class="bani">,${base.bani}</span><span class="cur"> LEI</span>
-        </div>
-        ${sgr ? `
-          <div class="sgr-banner">+ 0.50 BANI SGR</div>
-          <div class="total">TOTAL: ${total}</div>
-        ` : `<div class="unit">BUC</div>`}
+      <div class="w-name">${esc(p.denumire||'')}</div>
+      <div class="w-sep"></div>
+      <div class="w-price">
+        <span class="w-lei">${base.lei}</span><span class="w-bani">,${base.bani}</span><span class="w-currency"> LEI</span>
       </div>
+      ${sgr?`
+        <div class="w-sgr">+ 0.50 BANI SGR</div>
+        <div class="w-total">TOTAL: ${total}</div>
+      `:`<div class="w-unit">BUC</div>`}
     </td>`;
   }
 
@@ -2103,12 +2129,14 @@ function exportLabelsWordModel(model){
     pages.push(`<table class="labels-page">${trs.join('')}</table>`);
   }
 
-  const nameFont=isSmall?7.2:8.2;
-  const priceLei=isSmall?17:22;
-  const priceBani=isSmall?9:11.5;
-  const curFont=isSmall?6:8;
-  const sgrFont=isSmall?5.2:6.8;
-  const totalFont=isSmall?5.8:7.5;
+  // Stil compatibil Word: fără position:absolute, fără overflow, fără barcode.
+  const nameFont=isSmall?6.2:8.8;
+  const priceLei=isSmall?14.5:23;
+  const priceBani=isSmall?7.5:12;
+  const curFont=isSmall?5.2:7.8;
+  const unitFont=isSmall?5.4:7.5;
+  const sgrFont=isSmall?5.0:7.2;
+  const totalFont=isSmall?5.5:7.8;
 
   const html=`<!doctype html>
   <html>
@@ -2116,13 +2144,7 @@ function exportLabelsWordModel(model){
     <meta charset="utf-8">
     <style>
       @page{size:A4 portrait;margin:4mm;}
-      body{
-        font-family:Arial,Helvetica,sans-serif;
-        margin:0;
-        padding:0;
-        color:#222;
-        background:white;
-      }
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#111;background:white;}
       table.labels-page{
         width:${pageW}mm;
         height:${pageH}mm;
@@ -2137,79 +2159,51 @@ function exportLabelsWordModel(model){
         width:${labelW}mm;
         height:${labelH}mm;
         border:0.3mm solid #aeb4c0;
-        padding:1.2mm;
+        padding:${isSmall?'0.8mm':'1.2mm'};
         box-sizing:border-box;
         vertical-align:middle;
         text-align:center;
-        overflow:hidden;
       }
-      td.empty{border:0.3mm solid #e5e7eb;}
-      .label-box{
-        width:100%;
-        height:${labelH-2.4}mm;
-        box-sizing:border-box;
-        text-align:center;
-        overflow:hidden;
-        position:relative;
-      }
-      .name{
+      td.empty{color:white;}
+      .w-name{
         font-weight:900;
         font-size:${nameFont}pt;
-        line-height:1.08;
+        line-height:1.05;
         text-align:center;
-        height:${isSmall?7.2:9.5}mm;
+        height:${isSmall?'6.4mm':'9.5mm'};
+        max-height:${isSmall?'6.4mm':'9.5mm'};
         overflow:hidden;
-        white-space:normal;
       }
-      .sep{
-        border-top:0.25mm solid #333;
-        margin:${isSmall?'.6mm 0 .7mm':'1mm 0 1.2mm'};
-      }
-      .price{
+      .w-sep{border-top:0.25mm solid #333;margin:${isSmall?'.45mm 0 .5mm':'.7mm 0 .8mm'};}
+      .w-price{
+        font-weight:900;
         text-align:center;
-        font-weight:900;
-        line-height:.82;
         white-space:nowrap;
-        margin-top:${isSmall?'.4mm':'.5mm'};
+        line-height:1;
+        margin:0;
+        padding:0;
       }
-      .lei{
-        font-size:${priceLei}pt;
+      .w-lei{font-size:${priceLei}pt;font-weight:900;}
+      .w-bani{font-size:${priceBani}pt;font-weight:900;vertical-align:top;}
+      .w-currency{font-size:${curFont}pt;font-weight:900;}
+      .w-unit{
+        margin-top:${isSmall?'.5mm':'1mm'};
+        text-align:left;
+        font-size:${unitFont}pt;
         font-weight:900;
       }
-      .bani{
-        font-size:${priceBani}pt;
-        font-weight:900;
-        vertical-align:top;
-      }
-      .cur{
-        font-size:${curFont}pt;
-        font-weight:900;
-      }
-      .unit{
-        position:absolute;
-        left:0;
-        bottom:0;
-        font-size:${isSmall?5.8:7.3}pt;
-        font-weight:900;
-      }
-      .sgr-banner{
-        position:absolute;
-        left:0;
-        right:0;
-        bottom:${isSmall?3.4:4.5}mm;
+      .w-sgr{
+        margin-top:${isSmall?'.5mm':'1mm'};
         background:#c8752c;
         color:white;
         font-size:${sgrFont}pt;
-        line-height:1.1;
         font-weight:900;
-        padding:${isSmall?'.35mm 0':'.55mm 0'};
+        line-height:1.1;
+        padding:${isSmall?'.25mm 0':'.45mm 0'};
         text-align:center;
       }
-      .total{
-        position:absolute;
-        left:0;
-        right:0;
-        bottom:0;
+      .w-total{
+        margin-top:${isSmall?'.3mm':'.6mm'};
         font-size:${totalFont}pt;
         font-weight:900;
         text-align:center;
@@ -2228,7 +2222,7 @@ function exportLabelsWordModel(model){
 
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  const suffix=isSmall?'mici_40x21mm':'mari_50x35mm';
+  const suffix=isSmall?'mici_40x21mm':'mari_50x35mm_3coloane_8randuri';
   a.download=window.htmlDocx?`etichete_raft_${suffix}.docx`:`etichete_raft_${suffix}.doc`;
   a.click();
   URL.revokeObjectURL(a.href);
