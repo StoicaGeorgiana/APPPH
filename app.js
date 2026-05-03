@@ -545,31 +545,52 @@ function normProd(row,i){
 }
 
 function excelDate(v){
+  const pad=n=>String(n).padStart(2,'0');
+  const ymd=(y,m,d)=>`${y}-${pad(m)}-${pad(d)}`;
+
+  if(v===null || v===undefined || v==='') return '';
+
+  // Excel/SheetJS poate returna Date cu ora mutată pe UTC.
+  // Luăm data locală calendaristică, nu ISO/UTC.
   if(v instanceof Date && !isNaN(v)){
-    const y=v.getFullYear();
-    const m=String(v.getMonth()+1).padStart(2,'0');
-    const d=String(v.getDate()).padStart(2,'0');
-    return `${y}-${m}-${d}`;
+    // SheetJS transformă data Excel în Date la miezul nopții UTC.
+    // În România, local poate deveni ziua anterioară, deci folosim UTC.
+    return ymd(v.getUTCFullYear(), v.getUTCMonth()+1, v.getUTCDate());
   }
 
+  // Excel serial date. Folosim parse_date_code, apoi data calendaristică exactă.
   if(typeof v==='number' && window.XLSX){
     try{
       const d=XLSX.SSF.parse_date_code(v);
-      if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+      if(d) return ymd(d.y,d.m,d.d);
     }catch(_){}
   }
 
   const s=String(v||'').trim();
   if(!s) return '';
 
+  // Dacă vine ca ISO cu timezone, ex: 2026-05-01T21:00:00.000Z,
+  // NU luăm slice(0,10), fiindcă asta dă ziua anterioară.
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s) || /GMT|UTC|Z$/.test(s)){
+    const d=new Date(s);
+    if(!isNaN(d)) return ymd(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
+  }
+
+  // Format românesc Excel: 02/05/2026, 02.05.2026, 02-05-2026
   let m=s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
   if(m){
     let y=Number(m[3]);
     if(y<100) y+=2000;
-    return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+    return ymd(y,Number(m[2]),Number(m[1]));
   }
 
-  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // Format deja corect: 2026-05-02
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Fallback: încercăm Date local.
+  const d=new Date(s);
+  if(!isNaN(d)) return ymd(d.getFullYear(), d.getMonth()+1, d.getDate());
+
   return '';
 }
 
@@ -700,7 +721,11 @@ async function importExcel(e){
   await loadCounts();
   await loadProductCache();
 
-  $('import-status').innerHTML=`<div class="notice good">Import finalizat: ${produse.length} produse și ${intrari.length} intrări.</div>`;
+  {
+    const produseUnice=(await getAll('produse')).length;
+    const duplicateProduse=Math.max(0,produse.length-produseUnice);
+    $('import-status').innerHTML=`<div class="notice good">Import finalizat: ${produseUnice} produse unice din ${produse.length} rânduri TABEL și ${intrari.length} intrări.${duplicateProduse?`<br>Observație: ${duplicateProduse} rânduri din TABEL au fost duplicate după cod/ID și au fost comasate.`:''}</div>`;
+  }
   dashboard();
 }
 
@@ -1616,18 +1641,35 @@ async function exportIntrariExcel(){
 /* =========================
    RECEPȚIE MARFĂ / FIȘĂ TRANSPORT - v49
    ========================= */
+
+function makeUnknownProductFromCode(code){
+  const c=cleanCode(code) || String(code||'').trim();
+  return {
+    id:'manual-'+Date.now()+'-'+Math.random().toString(16).slice(2),
+    cod_bare:c,
+    plu:'',
+    denumire:'',
+    pret:0,
+    pret_cu_tva_mama:0,
+    tva_procent:'',
+    cantitate:1,
+    manual:true
+  };
+}
+
 function addProductToReceptie(p){
   if(!p) return toast('Produs inexistent');
 
   REC_LINES.push({
-    id:p.id,
-    cod_bare:p.cod_bare,
-    plu:p.plu,
-    denumire:p.denumire,
+    id:p.id || ('manual-'+Date.now()),
+    cod_bare:p.cod_bare || '',
+    plu:p.plu || '',
+    denumire:p.denumire || '',
     pret:money(p.pret),
     pret_cu_tva_mama:money(p.pret_cu_tva_mama || p["pret cu tva"] || p.pret),
     tva_procent:p.tva_procent || '',
-    cantitate:1
+    cantitate:p.cantitate || 1,
+    manual:!!p.manual
   });
 
   const q=$('rec-q');
@@ -1638,9 +1680,14 @@ function addProductToReceptie(p){
 window.addProductToReceptie=addProductToReceptie;
 
 async function addRecByInput(inputId='rec-q'){
-  const q=$(inputId)?.value||'';
+  const q=($(inputId)?.value||'').trim();
+  if(!q) return;
   const p=await byCode(q);
-  if(!p) return toast('Produs inexistent');
+  if(!p){
+    addProductToReceptie(makeUnknownProductFromCode(q));
+    toast('Cod nou adăugat manual. Completează denumirea, cantitatea și prețul când ai timp.');
+    return;
+  }
   addProductToReceptie(p);
 }
 window.addRecByInput=addRecByInput;
@@ -1660,12 +1707,12 @@ function renderReceptieLines(){
     const val=cant*pret;
     total+=val;
     return `<tr>
-      <td>${esc(x.cod_bare)}</td>
-      <td>${esc(x.plu||'')}</td>
-      <td><input class="input" value="${esc(x.denumire)}" onchange="REC_LINES[${i}].denumire=this.value"></td>
+      <td><input class="input" value="${esc(x.cod_bare||'')}" onchange="REC_LINES[${i}].cod_bare=this.value"></td>
+      <td><input class="input" value="${esc(x.plu||'')}" onchange="REC_LINES[${i}].plu=this.value" style="min-width:80px"></td>
+      <td><input class="input" value="${esc(x.denumire||'')}" placeholder="Denumire produs" onchange="REC_LINES[${i}].denumire=this.value"></td>
       <td><input class="input" type="number" step="0.001" value="${cant}" onchange="REC_LINES[${i}].cantitate=this.value;renderReceptieLines()"></td>
       <td><input class="input" type="number" step="0.01" value="${pret}" onchange="REC_LINES[${i}].pret=this.value;renderReceptieLines()"></td>
-      <td>${lei(x.pret_cu_tva_mama)}</td>
+      <td><input class="input" type="number" step="0.01" value="${money(x.pret_cu_tva_mama)}" onchange="REC_LINES[${i}].pret_cu_tva_mama=this.value;renderReceptieLines()"></td>
       <td><b>${lei(val)}</b></td>
       <td><button class="red" onclick="REC_LINES.splice(${i},1);renderReceptieLines()">×</button></td>
     </tr>`;
@@ -1749,12 +1796,13 @@ function addProductToTransport(p){
   if(!p) return toast('Produs inexistent');
 
   TRANS_LINES.push({
-    id:p.id,
-    cod_bare:p.cod_bare,
-    plu:p.plu,
-    denumire:p.denumire,
+    id:p.id || ('manual-'+Date.now()),
+    cod_bare:p.cod_bare || '',
+    plu:p.plu || '',
+    denumire:p.denumire || '',
     pret:money(p.pret),
-    cantitate:1
+    cantitate:p.cantitate || 1,
+    manual:!!p.manual
   });
 
   const q=$('trans-q');
@@ -1765,9 +1813,14 @@ function addProductToTransport(p){
 window.addProductToTransport=addProductToTransport;
 
 async function addTransportByInput(inputId='trans-q'){
-  const q=$(inputId)?.value||'';
+  const q=($(inputId)?.value||'').trim();
+  if(!q) return;
   const p=await byCode(q);
-  if(!p) return toast('Produs inexistent');
+  if(!p){
+    addProductToTransport(makeUnknownProductFromCode(q));
+    toast('Cod nou adăugat manual. Completează denumirea, cantitatea și prețul când ai timp.');
+    return;
+  }
   addProductToTransport(p);
 }
 window.addTransportByInput=addTransportByInput;
@@ -1783,7 +1836,15 @@ function renderTransportLines(){
   let total=0;
   body.innerHTML=(TRANS_LINES||[]).map((x,i)=>{
     const cant=parseCant(x.cantitate||1); const val=cant*money(x.pret); total+=val;
-    return `<tr><td>${esc(x.cod_bare)}</td><td>${esc(x.plu||'')}</td><td><input class="input" value="${esc(x.denumire)}" onchange="TRANS_LINES[${i}].denumire=this.value"></td><td><input class="input" type="number" step="0.001" value="${cant}" onchange="TRANS_LINES[${i}].cantitate=this.value;renderTransportLines()"></td><td>${lei(x.pret)}</td><td><b>${lei(val)}</b></td><td><button class="red" onclick="TRANS_LINES.splice(${i},1);renderTransportLines()">×</button></td></tr>`;
+    return `<tr>
+      <td><input class="input" value="${esc(x.cod_bare||'')}" onchange="TRANS_LINES[${i}].cod_bare=this.value"></td>
+      <td><input class="input" value="${esc(x.plu||'')}" onchange="TRANS_LINES[${i}].plu=this.value" style="min-width:80px"></td>
+      <td><input class="input" value="${esc(x.denumire||'')}" placeholder="Denumire produs" onchange="TRANS_LINES[${i}].denumire=this.value"></td>
+      <td><input class="input" type="number" step="0.001" value="${cant}" onchange="TRANS_LINES[${i}].cantitate=this.value;renderTransportLines()"></td>
+      <td><input class="input" type="number" step="0.01" value="${money(x.pret)}" onchange="TRANS_LINES[${i}].pret=this.value;renderTransportLines()"></td>
+      <td><b>${lei(val)}</b></td>
+      <td><button class="red" onclick="TRANS_LINES.splice(${i},1);renderTransportLines()">×</button></td>
+    </tr>`;
   }).join('') || '<tr><td colspan="7" class="muted">Nu ai produse în fișa de transport.</td></tr>';
   const t=$('trans-total'); if(t) t.textContent='Total transport: '+lei(total);
 }
