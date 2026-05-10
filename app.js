@@ -1528,11 +1528,31 @@ function exportInvWord(){
 /* =========================
    INTRĂRI
    ========================= */
+
+function setMonthRange(prefix){
+  const monthEl=$(prefix+'-luna');
+  const startEl=$(prefix+'-data-start');
+  const endEl=$(prefix+'-data-end');
+  if(!monthEl || !startEl || !endEl || !monthEl.value){
+    toast('Alege întâi luna.');
+    return;
+  }
+  const [y,m]=monthEl.value.split('-').map(Number);
+  const start=new Date(y,m-1,0);
+  const end=new Date(y,m,1);
+  const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  startEl.value=fmt(start);
+  endEl.value=fmt(end);
+  toast('Interval setat: '+startEl.value+' - '+endEl.value);
+}
+
 function getIntrariFilters(){
   return {
     q:$('intrari-search')?.value||'',
     furnizor:$('intrari-furnizor')?.value||'',
     zi:$('intrari-data')?.value||'',
+    dataStart:$('intrari-data-start')?.value||'',
+    dataEnd:$('intrari-data-end')?.value||'',
     luna:$('intrari-luna')?.value||'',
     an:$('intrari-an')?.value||''
   };
@@ -1544,8 +1564,10 @@ function intrareMatchesFilters(x,f){
   const luna=data.slice(0,7);
 
   if(f.zi && data!==f.zi) return false;
+  if(f.dataStart && data<f.dataStart) return false;
+  if(f.dataEnd && data>f.dataEnd) return false;
   if(f.luna && luna!==f.luna) return false;
-  if(f.an && an!==f.an) return false;
+  if(f.an && an!==String(f.an)) return false;
 
   const furnizorQ=String(f.furnizor||'').trim();
   if(furnizorQ){
@@ -1571,14 +1593,14 @@ function sortIntrariNewestFirst(rows){
   return rows.sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')) || String(b.nr||'').localeCompare(String(a.nr||'')));
 }
 
-async function searchIntrariRows(filters=null,limit=2000){
+async function searchIntrariRows(filters=null,limit=150000){
   const f=filters||getIntrariFilters();
   const all=await getAll('intrari');
   return sortIntrariNewestFirst(all.filter(x=>intrareMatchesFilters(x,f))).slice(0,limit);
 }
 
 async function renderIntrariView(filters=null){
-  const rows=await searchIntrariRows(filters||getIntrariFilters(),2000);
+  const rows=await searchIntrariRows(filters||getIntrariFilters(),150000);
   const total=await countStore('intrari');
 
   let cantTotal=0,valTotal=0;
@@ -1652,18 +1674,21 @@ async function intrari(){
       <div class="row">
         <input class="input" id="intrari-search" style="max-width:420px" placeholder="Cod bare / PLU / denumire / document" onkeydown="if(event.key==='Enter')cautaIntrari()">
         <input class="input" id="intrari-furnizor" style="max-width:260px" placeholder="Nume / CUI furnizor" onkeydown="if(event.key==='Enter')cautaIntrari()">
-        <input class="input" id="intrari-data" type="date" title="Data intrării">
+        <input class="input" id="intrari-data" type="date" title="Data exactă intrare">
+        <input class="input" id="intrari-data-start" type="date" title="De la data">
+        <input class="input" id="intrari-data-end" type="date" title="Până la data">
         <input class="input" id="intrari-luna" type="month" title="Luna intrării">
         <input class="input" id="intrari-an" type="number" min="2000" max="2100" placeholder="An" style="max-width:120px">
+        <button class="secondary" onclick="setMonthRange('intrari')">Setează interval lună</button>
         <button class="secondary" onclick="openCameraScanner('intrari-search','cautaIntrari')">📷 Scanează cu camera</button>
         <button onclick="cautaIntrari()">Caută în intrări</button>
-        <button class="secondary" onclick="$('intrari-search').value='';$('intrari-furnizor').value='';$('intrari-data').value='';$('intrari-luna').value='';$('intrari-an').value='';renderIntrariView({q:'',furnizor:'',zi:'',luna:'',an:''})">Golește</button>
+        <button class="secondary" onclick="$('intrari-search').value='';$('intrari-furnizor').value='';$('intrari-data').value='';$('intrari-data-start').value='';$('intrari-data-end').value='';$('intrari-luna').value='';$('intrari-an').value='';renderIntrariView({q:'',furnizor:'',zi:'',dataStart:'',dataEnd:'',luna:'',an:''})">Golește</button>
       </div>
     </div>
 
     <div id="intrari-results"><div class="notice">Se încarcă...</div></div>`;
 
-  await renderIntrariView({q:'',furnizor:'',zi:'',luna:'',an:''});
+  await renderIntrariView({q:'',furnizor:'',zi:'',dataStart:'',dataEnd:'',luna:'',an:''});
 }
 
 async function cautaIntrari(){
@@ -1936,6 +1961,8 @@ function getIesiriFilters(){
     q:$('iesiri-search')?.value||'',
     furnizor:$('iesiri-furnizor')?.value||'',
     zi:$('iesiri-data')?.value||'',
+    dataStart:$('iesiri-data-start')?.value||'',
+    dataEnd:$('iesiri-data-end')?.value||'',
     luna:$('iesiri-luna')?.value||'',
     an:$('iesiri-an')?.value||''
   };
@@ -1956,6 +1983,8 @@ function iesireMatchesFilters(x,f){
   const luna=data.slice(0,7);
 
   if(f.zi && data!==f.zi) return false;
+  if(f.dataStart && data<f.dataStart) return false;
+  if(f.dataEnd && data>f.dataEnd) return false;
   if(f.luna && luna!==f.luna) return false;
   if(f.an && an!==String(f.an)) return false;
 
@@ -1979,14 +2008,14 @@ function iesireMatchesFilters(x,f){
   return (code && hay.includes(code)) || (words.length && words.every(w=>hay.includes(w)));
 }
 
-async function searchIesiriRows(filters=null,limit=2000){
+async function searchIesiriRows(filters=null,limit=150000){
   const f=filters||getIesiriFilters();
   const all=await getAll('iesiri');
   return sortIntrariNewestFirst(all.filter(x=>iesireMatchesFilters(x,f))).slice(0,limit);
 }
 
 async function renderIesiriView(filters=null){
-  const rows=await searchIesiriRows(filters||getIesiriFilters(),2000);
+  const rows=await searchIesiriRows(filters||getIesiriFilters(),150000);
   const total=rows.reduce((s,x)=>s+money(x.total),0);
 
   $('iesiri-results').innerHTML=`
@@ -2038,18 +2067,21 @@ async function iesiri(){
       <div class="row">
         <input class="input" id="iesiri-search" style="max-width:420px" placeholder="Cod / PLU / denumire / metodă" onkeydown="if(event.key==='Enter')cautaIesiri()">
         <input class="input" id="iesiri-furnizor" style="max-width:260px" placeholder="Nume / CUI furnizor" onkeydown="if(event.key==='Enter')cautaIesiri()">
-        <input class="input" id="iesiri-data" type="date" title="Data ieșirii">
+        <input class="input" id="iesiri-data" type="date" title="Data exactă ieșire">
+        <input class="input" id="iesiri-data-start" type="date" title="De la data">
+        <input class="input" id="iesiri-data-end" type="date" title="Până la data">
         <input class="input" id="iesiri-luna" type="month" title="Luna ieșirii">
         <input class="input" id="iesiri-an" type="number" min="2000" max="2100" placeholder="An" style="max-width:120px">
+        <button class="secondary" onclick="setMonthRange('iesiri')">Setează interval lună</button>
         <button onclick="cautaIesiri()">Caută în ieșiri</button>
-        <button class="secondary" onclick="$('iesiri-search').value='';$('iesiri-furnizor').value='';$('iesiri-data').value='';$('iesiri-luna').value='';$('iesiri-an').value='';renderIesiriView({q:'',furnizor:'',zi:'',luna:'',an:''})">Golește</button>
+        <button class="secondary" onclick="$('iesiri-search').value='';$('iesiri-furnizor').value='';$('iesiri-data').value='';$('iesiri-data-start').value='';$('iesiri-data-end').value='';$('iesiri-luna').value='';$('iesiri-an').value='';renderIesiriView({q:'',furnizor:'',zi:'',dataStart:'',dataEnd:'',luna:'',an:''})">Golește</button>
       </div>
       <span class="pill">${totalAll} vânzări salvate</span>
     </div>
 
     <div id="iesiri-results"><div class="notice">Se încarcă...</div></div>`;
 
-  await renderIesiriView({q:'',furnizor:'',zi:'',luna:'',an:''});
+  await renderIesiriView({q:'',furnizor:'',zi:'',dataStart:'',dataEnd:'',luna:'',an:''});
 }
 
 async function cautaIesiri(){
