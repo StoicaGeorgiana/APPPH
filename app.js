@@ -388,7 +388,7 @@ function renderShell(){
     <aside class="side">
       <div class="brand">Gestiune<span>Pro</span></div>
       <button class="secondary" onclick="logout()">Ieșire</button>
-      <div class="userbox">administrator<br><span class="pill">PRO v70</span></div>
+      <div class="userbox">administrator<br><span class="pill">PRO v71</span></div>
 
       <div class="nav">
         ${nav('dashboard','📊 Dashboard')}
@@ -2588,13 +2588,45 @@ function verificaExpirari(){
   }
 }
 
-async function cautaProdusExpirare(){
+let EXP_SEARCH_TIMER=null;
+let EXP_PROD_CACHE=null;
+
+async function getExpProdCache(){
+  if(EXP_PROD_CACHE && EXP_PROD_CACHE.length) return EXP_PROD_CACHE;
+  try{ EXP_PROD_CACHE=await getAll('produse'); }
+  catch(e){ EXP_PROD_CACHE=[]; }
+  return EXP_PROD_CACHE;
+}
+
+function cautaProdusExpirare(){
+  clearTimeout(EXP_SEARCH_TIMER);
+  EXP_SEARCH_TIMER=setTimeout(cautaProdusExpirareNow,160);
+}
+
+async function cautaProdusExpirareNow(){
   const q=String($('exp-q')?.value||'').trim();
   const box=$('exp-suggest');
   if(!box) return;
+  if(q.length<2){ box.innerHTML=''; return; }
 
-  const rows=await searchProducts(q);
-  box.innerHTML=(rows||[]).slice(0,30).map(p=>`
+  const code=cleanCode(q);
+  const words=norm(q).split(/\s+/).filter(Boolean);
+  const produse=await getExpProdCache();
+  const rows=[];
+
+  for(const p of produse){
+    const cod=String(p.cod_bare||'');
+    const plu=String(p.plu||'');
+    const den=norm(p.denumire||'');
+    const ok=(code&&(cod.includes(code)||plu.includes(code))) ||
+             (words.length&&words.every(w=>den.includes(w)));
+    if(ok){
+      rows.push(p);
+      if(rows.length>=150000) break;
+    }
+  }
+
+  box.innerHTML=rows.map(p=>`
     <div class="suggest-row" onclick="selectExpProd('${String(p.id).replace(/'/g,"\\'")}')">
       <b>${esc(p.cod_bare||p.plu||'')}</b> ${esc(p.denumire||'')}
     </div>`).join('') || '<div class="muted">Nu există rezultate.</div>';
@@ -2613,19 +2645,34 @@ async function selectExpProd(id){
 async function addExpirareByInput(){
   const q=String($('exp-q')?.value||'').trim();
   if(!q) return;
-  const p=await byCode(q);
+
+  const code=cleanCode(q);
+  const words=norm(q).split(/\s+/).filter(Boolean);
+  const produse=await getExpProdCache();
+  let p=null;
+
+  for(const x of produse){
+    const cod=String(x.cod_bare||'');
+    const plu=String(x.plu||'');
+    const den=norm(x.denumire||'');
+    if((code&&(cod===code||plu===code||cod.includes(code)||plu.includes(code))) ||
+       (words.length&&words.every(w=>den.includes(w)))){
+      p=x; break;
+    }
+  }
+
   if(p){
     $('exp-cod').value=p.cod_bare||'';
     $('exp-plu').value=p.plu||'';
     $('exp-den').value=p.denumire||'';
     $('exp-pret').value=money(p.pret);
   }else{
-    $('exp-cod').value=cleanCode(q)||q;
+    $('exp-cod').value=code||q;
     $('exp-plu').value='';
-    if(!$('exp-den').value) $('exp-den').value='';
     $('exp-pret').value=0;
     toast('Cod nou. Completează denumirea.');
   }
+  const s=$('exp-suggest'); if(s) s.innerHTML='';
 }
 
 function adaugaExpirare(){
@@ -2642,17 +2689,16 @@ function adaugaExpirare(){
   }
 
   EXPIRARI.unshift({
-    id:Date.now(),
-    cod_bare:cod,
-    plu,
-    denumire:den,
-    cantitate:cant,
-    data_expirare:data,
-    pret,
+    id:Date.now(), cod_bare:cod, plu, denumire:den,
+    cantitate:cant, data_expirare:data, pret,
     created_at:new Date().toISOString()
   });
+
   saveExpirari();
-  renderExpirari();
+  renderExpirariTable();
+
+  ['exp-q','exp-cod','exp-plu','exp-den','exp-cant','exp-data','exp-pret'].forEach(id=>{const el=$(id); if(el) el.value='';});
+  const s=$('exp-suggest'); if(s) s.innerHTML='';
   toast('Termen adăugat.');
 }
 
@@ -2675,6 +2721,32 @@ function trimiteExpirareLaEtichete(id){
     cantitate:x.cantitate
   },'termene');
   go('etichete');
+}
+
+
+function expirariRowsHtml(){
+  return (EXPIRARI||[]).map(x=>{
+    const z=zileRamase(x.data_expirare);
+    return `<tr>
+      <td>${esc(x.cod_bare||'')}</td>
+      <td>${esc(x.plu||'')}</td>
+      <td>${esc(x.denumire||'')}</td>
+      <td>${fmtCant(x.cantitate)}</td>
+      <td>${esc(x.data_expirare||'')}</td>
+      <td><b style="${z<=7?'color:#ff6b6b':''}">${z}</b></td>
+      <td>
+        <button onclick="trimiteExpirareLaEtichete(${x.id})">Etichete</button>
+        <button class="red" onclick="stergeExpirare(${x.id})">×</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">Nu ai termene salvate.</td></tr>';
+}
+
+function renderExpirariTable(){
+  const body=$('exp-tbody');
+  if(body) body.innerHTML=expirariRowsHtml();
+  const pill=$('exp-alert-pill');
+  if(pill) pill.textContent=expirariAlert7Zile().length+' expiră în 7 zile';
 }
 
 function expirari(){
@@ -2702,7 +2774,7 @@ function expirari(){
 
       <div class="row" style="margin-top:12px">
         <button class="green" onclick="adaugaExpirare()">Adaugă termen</button>
-        <span class="pill">${expirariAlert7Zile().length} expiră în 7 zile</span>
+        <span class="pill" id="exp-alert-pill">${expirariAlert7Zile().length} expiră în 7 zile</span>
       </div>
     </div>
 
@@ -2719,23 +2791,7 @@ function expirari(){
             <th>Acțiuni</th>
           </tr>
         </thead>
-        <tbody>
-          ${(EXPIRARI||[]).map(x=>{
-            const z=zileRamase(x.data_expirare);
-            return `<tr>
-              <td>${esc(x.cod_bare||'')}</td>
-              <td>${esc(x.plu||'')}</td>
-              <td>${esc(x.denumire||'')}</td>
-              <td>${fmtCant(x.cantitate)}</td>
-              <td>${esc(x.data_expirare||'')}</td>
-              <td><b style="${z<=7?'color:#ff6b6b':''}">${z}</b></td>
-              <td>
-                <button onclick="trimiteExpirareLaEtichete(${x.id})">Etichete</button>
-                <button class="red" onclick="stergeExpirare(${x.id})">×</button>
-              </td>
-            </tr>`;
-          }).join('') || '<tr><td colspan="7" class="muted">Nu ai termene salvate.</td></tr>'}
-        </tbody>
+        <tbody id="exp-tbody">${expirariRowsHtml()}</tbody>
       </table>
     </div>`;
 }
