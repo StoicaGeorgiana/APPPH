@@ -388,7 +388,7 @@ function renderShell(){
     <aside class="side">
       <div class="brand">Gestiune<span>Pro</span></div>
       <button class="secondary" onclick="logout()">Ieșire</button>
-      <div class="userbox">administrator<br><span class="pill">PRO v44</span></div>
+      <div class="userbox">administrator<br><span class="pill">PRO v70</span></div>
 
       <div class="nav">
         ${nav('dashboard','📊 Dashboard')}
@@ -402,6 +402,7 @@ function renderShell(){
         ${nav('transport','🚚 Fișă transport')}
         ${nav('iesiri','📤 Ieșiri')}
         ${nav('etichete','🏷 Etichete preț')}
+        ${nav('expirari','⏰ Termene valabilitate')}
         ${nav('backup','💾 Backup / reset')}
       </div>
     </aside>
@@ -429,6 +430,7 @@ function getPageFunction(p){
     transport,
     iesiri,
     etichete,
+    expirari,
     backup
   })[p] || dashboard;
 }
@@ -474,16 +476,14 @@ function dashboard(){
     <div class="card"><div class="stat">${lei(cartTotal())}</div><div class="muted">Coș curent</div></div>
     <div class="card">
       <button class="orange" onclick="location.reload()">Actualizează aplicația</button>
-      <button class="secondary" onclick="reloadData()">Reîncarcă date</button>
       <button class="red" onclick="resetAllData()">Șterge toate datele</button>
       <p class="muted">Ultimul import: ${APP.lastImport||'niciunul'}</p>
     </div>
   </div>
 
   <div class="card">
-    <h3>⬆ Import unic SCANARECODPRETURI / MAMA / SAGA</h3>
+    <h3>Import</h3>
     <input class="input" type="file" accept=".xlsx,.xls" onchange="importExcel(event)">
-    <p class="muted">Citește sheet-ul TABEL pentru produse și TVA / intrări pentru intrări. După import, paginile se încarcă din IndexedDB.</p>
     <div id="import-status"></div>
   </div>`;
 }
@@ -1593,14 +1593,14 @@ function sortIntrariNewestFirst(rows){
   return rows.sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')) || String(b.nr||'').localeCompare(String(a.nr||'')));
 }
 
-async function searchIntrariRows(filters=null,limit=150000){
+async function searchIntrariRows(filters=null,limit=2000){
   const f=filters||getIntrariFilters();
   const all=await getAll('intrari');
   return sortIntrariNewestFirst(all.filter(x=>intrareMatchesFilters(x,f))).slice(0,limit);
 }
 
 async function renderIntrariView(filters=null){
-  const rows=await searchIntrariRows(filters||getIntrariFilters(),150000);
+  const rows=await searchIntrariRows(filters||getIntrariFilters(),2000);
   const total=await countStore('intrari');
 
   let cantTotal=0,valTotal=0;
@@ -2008,14 +2008,14 @@ function iesireMatchesFilters(x,f){
   return (code && hay.includes(code)) || (words.length && words.every(w=>hay.includes(w)));
 }
 
-async function searchIesiriRows(filters=null,limit=150000){
+async function searchIesiriRows(filters=null,limit=2000){
   const f=filters||getIesiriFilters();
   const all=await getAll('iesiri');
   return sortIntrariNewestFirst(all.filter(x=>iesireMatchesFilters(x,f))).slice(0,limit);
 }
 
 async function renderIesiriView(filters=null){
-  const rows=await searchIesiriRows(filters||getIesiriFilters(),150000);
+  const rows=await searchIesiriRows(filters||getIesiriFilters(),2000);
   const total=rows.reduce((s,x)=>s+money(x.total),0);
 
   $('iesiri-results').innerHTML=`
@@ -2554,3 +2554,191 @@ function downloadText(name,text){
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+
+
+/* =========================
+   TERMENE VALABILITATE
+   ========================= */
+let EXPIRARI = JSON.parse(localStorage.getItem('gp_expirari')||'[]');
+
+function saveExpirari(){
+  localStorage.setItem('gp_expirari', JSON.stringify(EXPIRARI));
+}
+
+function zileRamase(dataExp){
+  if(!dataExp) return '';
+  const azi=new Date();
+  azi.setHours(0,0,0,0);
+  const exp=new Date(dataExp+'T00:00:00');
+  return Math.ceil((exp-azi)/(1000*60*60*24));
+}
+
+function expirariAlert7Zile(){
+  return (EXPIRARI||[]).filter(x=>{
+    const z=zileRamase(x.data_expirare);
+    return Number.isFinite(z) && z>=0 && z<=7;
+  });
+}
+
+function verificaExpirari(){
+  const arr=expirariAlert7Zile();
+  if(arr.length){
+    setTimeout(()=>toast('Atenție: '+arr.length+' produse expiră în următoarele 7 zile.'),1000);
+  }
+}
+
+async function cautaProdusExpirare(){
+  const q=String($('exp-q')?.value||'').trim();
+  const box=$('exp-suggest');
+  if(!box) return;
+
+  const rows=await searchProducts(q);
+  box.innerHTML=(rows||[]).slice(0,30).map(p=>`
+    <div class="suggest-row" onclick="selectExpProd('${String(p.id).replace(/'/g,"\\'")}')">
+      <b>${esc(p.cod_bare||p.plu||'')}</b> ${esc(p.denumire||'')}
+    </div>`).join('') || '<div class="muted">Nu există rezultate.</div>';
+}
+
+async function selectExpProd(id){
+  const p=await getProdById(id);
+  if(!p) return;
+  $('exp-cod').value=p.cod_bare||'';
+  $('exp-plu').value=p.plu||'';
+  $('exp-den').value=p.denumire||'';
+  $('exp-pret').value=money(p.pret);
+  $('exp-suggest').innerHTML='';
+}
+
+async function addExpirareByInput(){
+  const q=String($('exp-q')?.value||'').trim();
+  if(!q) return;
+  const p=await byCode(q);
+  if(p){
+    $('exp-cod').value=p.cod_bare||'';
+    $('exp-plu').value=p.plu||'';
+    $('exp-den').value=p.denumire||'';
+    $('exp-pret').value=money(p.pret);
+  }else{
+    $('exp-cod').value=cleanCode(q)||q;
+    $('exp-plu').value='';
+    if(!$('exp-den').value) $('exp-den').value='';
+    $('exp-pret').value=0;
+    toast('Cod nou. Completează denumirea.');
+  }
+}
+
+function adaugaExpirare(){
+  const cod=String($('exp-cod')?.value||'').trim();
+  const plu=String($('exp-plu')?.value||'').trim();
+  const den=String($('exp-den')?.value||'').trim();
+  const cant=parseCant($('exp-cant')?.value||0);
+  const data=String($('exp-data')?.value||'').trim();
+  const pret=money($('exp-pret')?.value||0);
+
+  if(!den || !cant || !data){
+    toast('Completează denumirea, cantitatea și data expirării.');
+    return;
+  }
+
+  EXPIRARI.unshift({
+    id:Date.now(),
+    cod_bare:cod,
+    plu,
+    denumire:den,
+    cantitate:cant,
+    data_expirare:data,
+    pret,
+    created_at:new Date().toISOString()
+  });
+  saveExpirari();
+  renderExpirari();
+  toast('Termen adăugat.');
+}
+
+function stergeExpirare(id){
+  if(!confirm('Ștergi termenul?')) return;
+  EXPIRARI=EXPIRARI.filter(x=>x.id!==id);
+  saveExpirari();
+  renderExpirari();
+}
+
+function trimiteExpirareLaEtichete(id){
+  const x=(EXPIRARI||[]).find(e=>e.id===id);
+  if(!x) return;
+  addLabelProduct({
+    id:'EXP-'+x.id,
+    cod_bare:x.cod_bare,
+    plu:x.plu,
+    denumire:x.denumire,
+    pret:x.pret||0,
+    cantitate:x.cantitate
+  },'termene');
+  go('etichete');
+}
+
+function expirari(){
+  $('main').innerHTML=`
+    <h1>Termene valabilitate</h1>
+
+    <div class="card">
+      <div class="row">
+        <div style="position:relative;max-width:620px;flex:1">
+          <input class="input" id="exp-q" style="max-width:100%" placeholder="Cod bare / PLU / denumire" oninput="cautaProdusExpirare()" onkeydown="if(event.key==='Enter')addExpirareByInput()">
+          <div class="suggest" id="exp-suggest"></div>
+        </div>
+        <button class="secondary" onclick="openCameraScanner('exp-q','addExpirareByInput')">📷 Scanează</button>
+        <button onclick="addExpirareByInput()">Alege produs</button>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <input class="input" id="exp-cod" placeholder="Cod bare">
+        <input class="input" id="exp-plu" placeholder="PLU">
+        <input class="input" id="exp-den" placeholder="Denumire produs">
+        <input class="input" id="exp-cant" type="number" step="0.001" placeholder="Bucăți cu același termen">
+        <input class="input" id="exp-data" type="date">
+        <input class="input" id="exp-pret" type="number" step="0.01" placeholder="Preț">
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="green" onclick="adaugaExpirare()">Adaugă termen</button>
+        <span class="pill">${expirariAlert7Zile().length} expiră în 7 zile</span>
+      </div>
+    </div>
+
+    <div class="card tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Cod</th>
+            <th>PLU</th>
+            <th>Produs</th>
+            <th>Buc.</th>
+            <th>Expiră</th>
+            <th>Zile</th>
+            <th>Acțiuni</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(EXPIRARI||[]).map(x=>{
+            const z=zileRamase(x.data_expirare);
+            return `<tr>
+              <td>${esc(x.cod_bare||'')}</td>
+              <td>${esc(x.plu||'')}</td>
+              <td>${esc(x.denumire||'')}</td>
+              <td>${fmtCant(x.cantitate)}</td>
+              <td>${esc(x.data_expirare||'')}</td>
+              <td><b style="${z<=7?'color:#ff6b6b':''}">${z}</b></td>
+              <td>
+                <button onclick="trimiteExpirareLaEtichete(${x.id})">Etichete</button>
+                <button class="red" onclick="stergeExpirare(${x.id})">×</button>
+              </td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="7" class="muted">Nu ai termene salvate.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+
+setTimeout(verificaExpirari,1500);
